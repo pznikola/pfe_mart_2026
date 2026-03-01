@@ -1,0 +1,11 @@
+*.vcd
+*.txt
+*.qpf
+*.qsf
+*.qsys
+*.sopcinfo
+output_files/
+jtag_uart_sys/
+db/
+incremental_db/
+build/

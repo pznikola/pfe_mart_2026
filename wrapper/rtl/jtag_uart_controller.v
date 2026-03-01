@@ -27,24 +27,28 @@ module jtag_uart_controller (
     // TX streaming interface (data to PC)
     input  wire [7:0]  tx_data,
     input  wire        tx_valid,
-    output reg         tx_ready
+    output wire        tx_ready   // now a wire, not reg
 );
 
-    localparam S_IDLE        = 3'd0,
-               S_READ_DATA   = 3'd1,
-               S_WAIT_READ   = 3'd2,
-               S_CHECK_TX    = 3'd3,
-               S_READ_CTRL   = 3'd4,
-               S_WAIT_CTRL   = 3'd5,
-               S_WRITE_DATA  = 3'd6,
-               S_WAIT_WRITE  = 3'd7;
+    localparam S_IDLE        = 4'd0,
+               S_READ_DATA   = 4'd1,
+               S_WAIT_READ   = 4'd2,
+               S_HOLD_RX     = 4'd3,   // NEW: hold rx_valid until rx_ready
+               S_CHECK_TX    = 4'd4,
+               S_READ_CTRL   = 4'd5,
+               S_WAIT_CTRL   = 4'd6,
+               S_WRITE_DATA  = 4'd7,
+               S_WAIT_WRITE  = 4'd8;
 
-    reg [2:0] state;
+    reg [3:0] state;
     reg [7:0] delay;
 
     // TX holding register
     reg [7:0] tx_hold;
     reg       tx_pending;
+
+    // tx_ready: accept a new byte only when no byte is already pending
+    assign tx_ready = !tx_pending;
 
     // Latch tx_data when tx_valid & tx_ready
     always @(posedge clk or negedge rst_n) begin
@@ -61,10 +65,6 @@ module jtag_uart_controller (
         end
     end
 
-    always @(*) begin
-        tx_ready = !tx_pending;
-    end
-
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state         <= S_IDLE;
@@ -77,10 +77,6 @@ module jtag_uart_controller (
             rx_valid      <= 1'b0;
             delay         <= 8'd0;
         end else begin
-            // rx_valid is a pulse, clear by default
-            if (rx_valid && rx_ready)
-                rx_valid <= 1'b0;
-
             case (state)
                 S_IDLE: begin
                     av_chipselect <= 1'b0;
@@ -110,8 +106,19 @@ module jtag_uart_controller (
                         if (av_readdata[15]) begin   // RVALID
                             rx_data  <= av_readdata[7:0];
                             rx_valid <= 1'b1;
+                            state    <= S_HOLD_RX;   // wait for handshake
+                        end else begin
+                            state <= S_CHECK_TX;     // nothing received
                         end
-                        state <= S_CHECK_TX;
+                    end
+                end
+
+                // Hold rx_valid high until the deserializer accepts the byte.
+                // Only then move on — this prevents silent byte drops.
+                S_HOLD_RX: begin
+                    if (rx_ready) begin
+                        rx_valid <= 1'b0;
+                        state    <= S_CHECK_TX;
                     end
                 end
 

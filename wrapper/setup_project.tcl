@@ -22,11 +22,11 @@ set_global_assignment -name MAX_CORE_JUNCTION_TEMP 85
 set_global_assignment -name ERROR_CHECK_FREQUENCY_DIVISOR 256
 
 # --- Source files ---
-set_global_assignment -name VERILOG_FILE jtag_uart_top.v
-set_global_assignment -name VERILOG_FILE jtag_uart_controller.v
-set_global_assignment -name VERILOG_FILE pfe.v
-set_global_assignment -name VERILOG_FILE byte_deserializer.v
-set_global_assignment -name VERILOG_FILE byte_serializer.v
+set_global_assignment -name VERILOG_FILE ./rtl/jtag_uart_top.v
+set_global_assignment -name VERILOG_FILE ./rtl/jtag_uart_controller.v
+set_global_assignment -name VERILOG_FILE ./rtl/pfe.v
+set_global_assignment -name VERILOG_FILE ./rtl/byte_deserializer.v
+set_global_assignment -name VERILOG_FILE ./rtl/byte_serializer.v
 set_global_assignment -name QIP_FILE jtag_uart_sys/synthesis/jtag_uart_sys.qip
 set_global_assignment -name SDC_FILE timing.sdc
 

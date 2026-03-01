@@ -27,32 +27,29 @@ module byte_deserializer #(
     input  wire                      out_ready
 );
 
-    localparam W = WORD_BYTES * 8;
+    localparam W        = WORD_BYTES * 8;
     localparam CNT_BITS = (WORD_BYTES == 1) ? 1 : $clog2(WORD_BYTES);
 
-    reg [W-1:0]        shift;
-    reg [CNT_BITS:0]   count;  // extra bit so we can count up to WORD_BYTES
+    reg [CNT_BITS:0] count;  // extra bit so we can count up to WORD_BYTES
 
-    // Accept bytes when we haven't completed a word yet
+    // Block new bytes while a completed word is waiting to be accepted
     assign in_ready = (count < WORD_BYTES) && !(out_valid && !out_ready);
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            shift     <= {W{1'b0}};
-            count     <= 0;
             out_data  <= {W{1'b0}};
+            count     <= 0;
             out_valid <= 1'b0;
         end else begin
             // Clear out_valid once downstream accepts
-            if (out_valid && out_ready) begin
+            if (out_valid && out_ready)
                 out_valid <= 1'b0;
-            end
 
-            // Shift in bytes
+            // Shift bytes directly into out_data (MSB first)
             if (in_valid && in_ready) begin
-                shift <= {shift[W-9:0], in_data};  // MSB first: new byte at bottom
+                out_data <= {out_data[W-9:0], in_data};
+
                 if (count == WORD_BYTES - 1) begin
-                    out_data  <= {shift[W-9:0], in_data};
                     out_valid <= 1'b1;
                     count     <= 0;
                 end else begin
