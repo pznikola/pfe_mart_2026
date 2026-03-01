@@ -33,15 +33,18 @@ module jtag_uart_controller (
     localparam S_IDLE        = 4'd0,
                S_READ_DATA   = 4'd1,
                S_WAIT_READ   = 4'd2,
-               S_HOLD_RX     = 4'd3,   // NEW: hold rx_valid until rx_ready
+               S_PROC_READ   = 4'd9,   // process captured DATA read
+               S_HOLD_RX     = 4'd3,   // hold rx_valid until rx_ready
                S_CHECK_TX    = 4'd4,
                S_READ_CTRL   = 4'd5,
                S_WAIT_CTRL   = 4'd6,
+               S_PROC_CTRL   = 4'd10,  // process captured CONTROL read
                S_WRITE_DATA  = 4'd7,
                S_WAIT_WRITE  = 4'd8;
 
     reg [3:0] state;
     reg [7:0] delay;
+    reg [31:0] rd_capture; // captures av_readdata (model may register readdata)
 
     // TX holding register
     reg [7:0] tx_hold;
@@ -76,6 +79,7 @@ module jtag_uart_controller (
             rx_data       <= 8'd0;
             rx_valid      <= 1'b0;
             delay         <= 8'd0;
+            rd_capture    <= 32'd0;
         end else begin
             case (state)
                 S_IDLE: begin
@@ -101,15 +105,23 @@ module jtag_uart_controller (
 
                 S_WAIT_READ: begin
                     if (!av_waitrequest) begin
+                        // Read transfer completes this cycle, but av_readdata may be registered.
+                        // Capture it and evaluate on the next cycle.
                         av_chipselect <= 1'b0;
                         av_read_n     <= 1'b1;
-                        if (av_readdata[15]) begin   // RVALID
-                            rx_data  <= av_readdata[7:0];
-                            rx_valid <= 1'b1;
-                            state    <= S_HOLD_RX;   // wait for handshake
-                        end else begin
-                            state <= S_CHECK_TX;     // nothing received
-                        end
+                        rd_capture    <= av_readdata;
+                        state         <= S_PROC_READ;
+                    end
+                end
+
+                // Process captured DATA read (avoids sampling stale av_readdata)
+                S_PROC_READ: begin
+                    if (rd_capture[15]) begin   // RVALID
+                        rx_data  <= rd_capture[7:0];
+                        rx_valid <= 1'b1;
+                        state    <= S_HOLD_RX;
+                    end else begin
+                        state <= S_CHECK_TX;
                     end
                 end
 
@@ -144,11 +156,17 @@ module jtag_uart_controller (
                     if (!av_waitrequest) begin
                         av_chipselect <= 1'b0;
                         av_read_n     <= 1'b1;
-                        if (av_readdata[31:16] > 0)  // WSPACE > 0
-                            state <= S_WRITE_DATA;
-                        else
-                            state <= S_READ_CTRL;    // retry
+                        rd_capture    <= av_readdata;
+                        state         <= S_PROC_CTRL;
                     end
+                end
+
+                // Process captured CONTROL read (avoids sampling stale av_readdata)
+                S_PROC_CTRL: begin
+                    if (rd_capture[31:16] > 0)  // WSPACE > 0
+                        state <= S_WRITE_DATA;
+                    else
+                        state <= S_READ_CTRL;    // retry
                 end
 
                 // Write byte to DATA register
