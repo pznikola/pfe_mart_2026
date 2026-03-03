@@ -1,3 +1,35 @@
+#----------------------------------------------------------------------
+# Quartus
+#----------------------------------------------------------------------
+# Open existing project 
+q_open:
+	./build.sh --open 
+
+# Build full project
+q_build:
+	./build.sh --clean
+
+# Build full project and program the board
+q_program:
+	./build.sh --clean --program
+
+# Program only the board
+q_program_only:
+	./build.sh --prog
+
+# Clean the Quartus files
+q_clean:
+	./build.sh --clean-only 
+
+#----------------------------------------------------------------------
+# Connect PC and FPGA
+#----------------------------------------------------------------------
+connect:
+	python3 jtag_uart_raw.py
+
+#----------------------------------------------------------------------
+# Verilator simulations
+#----------------------------------------------------------------------
 VERILATOR ?= verilator
 
 # Default verbosity (0 = quiet, 1 = verbose)
@@ -11,6 +43,7 @@ RTL_DIR = rtl
 DV_DIR  = dv
 BUILD_DIR = build
 
+
 RTL_FIFO      = $(RTL_DIR)/fifo.v 
 RTL_DESER     = $(RTL_DIR)/byte_deserializer.v 
 RTL_SER       = $(RTL_DIR)/byte_serializer.v
@@ -22,9 +55,8 @@ TB_SER        = $(DV_DIR)/tb_byte_serializer.v
 TB_JTAG       = $(DV_DIR)/tb_jtag_uart_controller.v
 MODEL_JTAG    = $(DV_DIR)/jtag_uart_model.v
 
-all: fifo deser ser jtag
-
-fifo:
+# Simulate fifo
+sim_fifo:
 	@mkdir -p $(BUILD_DIR)/fifo
 	@echo "== Building tb_fifo =="
 	$(VERILATOR) $(VERILATOR_FLAGS) \
@@ -34,7 +66,8 @@ fifo:
 	@echo "== Running tb_fifo =="
 	./$(BUILD_DIR)/fifo/Vtb_fifo
 
-deser:
+# Simulate deserializer
+sim_deser:
 	@mkdir -p $(BUILD_DIR)/deser
 	@echo "== Building tb_byte_deserializer =="
 	$(VERILATOR) $(VERILATOR_FLAGS) \
@@ -44,7 +77,8 @@ deser:
 	@echo "== Running tb_byte_deserializer =="
 	./$(BUILD_DIR)/deser/Vtb_byte_deserializer
 
-ser:
+# Simulate serializer
+sim_ser:
 	@mkdir -p $(BUILD_DIR)/ser
 	@echo "== Building tb_byte_serializer =="
 	$(VERILATOR) $(VERILATOR_FLAGS) \
@@ -54,7 +88,8 @@ ser:
 	@echo "== Running tb_byte_serializer =="
 	./$(BUILD_DIR)/ser/Vtb_byte_serializer
 
-jtag:
+# Simulate JTAG controller
+sim_jtag:
 	@mkdir -p $(BUILD_DIR)/jtag
 	@echo "== Building tb_jtag_uart_controller =="
 	$(VERILATOR) $(VERILATOR_FLAGS) \
@@ -64,7 +99,16 @@ jtag:
 	@echo "== Running tb_jtag_uart_controller =="
 	./$(BUILD_DIR)/jtag/Vtb_jtag_uart_controller
 
+# Simulate all
+sim_all:
+	make sim_fifo
+	make sim_deser
+	make sim_ser
+	make sim_jtag
+
+#----------------------------------------------------------------------
+# Clean
+#----------------------------------------------------------------------
 clean:
 	rm -rf $(BUILD_DIR) *.vcd
-
-.PHONY: all fifo deser ser jtag clean
+	make q_clean

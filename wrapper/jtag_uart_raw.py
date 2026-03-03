@@ -19,6 +19,23 @@ import sys
 import time
 import signal
 
+# ---------------------------------------------------------------------------
+# Ensure Quartus shared libraries are on LD_LIBRARY_PATH.
+# On Linux, LD_LIBRARY_PATH is read once at process start, so if we need to
+# add to it, we must re-exec ourselves for the change to take effect.
+# ---------------------------------------------------------------------------
+_REEXEC_ENV_VAR = "_JTAG_UART_RAW_REEXEC"
+
+if os.environ.get(_REEXEC_ENV_VAR) != "1":
+    _quartus_root = os.environ.get("QUARTUS_ROOTDIR", "")
+    if _quartus_root:
+        _lib_dir = os.path.join(_quartus_root, "linux64")
+        _ld_path = os.environ.get("LD_LIBRARY_PATH", "")
+        if _lib_dir not in _ld_path:
+            os.environ["LD_LIBRARY_PATH"] = _lib_dir + (":" + _ld_path if _ld_path else "")
+            os.environ[_REEXEC_ENV_VAR] = "1"
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+
 
 def find_quartus_lib_dir():
     """Find the directory containing the JTAG Atlantic shared libraries."""

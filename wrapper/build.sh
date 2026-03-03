@@ -4,11 +4,10 @@
 # Usage:
 #   ./build.sh                  Build only
 #   ./build.sh --program        Build and program FPGA
+#   ./build.sh --prog           Program FPGA only (skip build)
 #   ./build.sh --clean          Remove generated files and rebuild
 #   ./build.sh --gui            Set up project and open Quartus GUI
 #   ./build.sh --open           Check if project exists and then open Quartus GUI
-#   ./build.sh --sim            Run simulation in batch mode (ModelSim)
-#   ./build.sh --sim-gui        Run simulation and open ModelSim GUI with waveforms
 
 set -e
 
@@ -23,6 +22,25 @@ DO_SIM=0
 for arg in "$@"; do
     case $arg in
         --program) DO_PROGRAM=1 ;;
+        --prog)
+            # Program-only: just flash the existing SOF and exit
+            echo -e "\n\033[1;36m=== Programming FPGA (DE1-SoC) ===\033[0m\n"
+            SOF="output_files/${PROJECT}.sof"
+            if [ ! -f "$SOF" ]; then
+                echo -e "\033[0;31m  ✗ No bitstream found at $SOF — run ./build.sh first\033[0m"
+                exit 1
+            fi
+            # Auto-detect cable name from jtagconfig
+            CABLE=$(jtagconfig 2>/dev/null | grep -oP '^\d+\)\s+\K.*' | head -1)
+            if [ -z "$CABLE" ]; then
+                echo -e "\033[0;31m  ✗ No JTAG cable detected. Is the board connected?\033[0m"
+                exit 1
+            fi
+            echo -e "\033[0;32m  ✓ Cable: $CABLE\033[0m"
+            quartus_pgm -c "$CABLE" -m jtag \
+                -o "p;${SOF}@2" || { echo -e "\033[0;31m  ✗ Programming failed\033[0m"; exit 1; }
+            echo -e "\033[0;32m  ✓ FPGA programmed with $SOF\033[0m"
+            exit 0 ;;
         --clean)   DO_CLEAN=1   ;;
         --clean-only)
             echo "Removing generated files..."
@@ -43,8 +61,9 @@ for arg in "$@"; do
             fi
             exit 0 ;;
         --help)
-            echo "Usage: $0 [--program] [--clean] [--clean-only] [--gui] [--open] [--sim] [--sim-gui]"
+            echo "Usage: $0 [--program] [--clean] [--clean-only] [--gui] [--open]"
             echo "  --program     Build and program FPGA"
+            echo "  --prog        Program FPGA only (skip build)"
             echo "  --clean       Remove generated files and rebuild"
             echo "  --clean-only  Remove generated files and exit"
             echo "  --gui         Set up project (steps 1-3) and open Quartus GUI"
@@ -94,60 +113,6 @@ for tool in quartus_sh qsys-script qsys-generate quartus_pgm; do
         fi
     fi
 done
-
-# Resolve ModelSim paths if simulation is requested
-if [ $DO_SIM -eq 1 ]; then
-    # Find ModelSim-Altera Starter Edition (modelsim_ase) first.
-    # Questa requires a separate license — avoid it unless it's all we have.
-    MODELSIM_BIN=""
-    for candidate in \
-        "$QUARTUS_ROOT/modelsim_ase/bin" \
-        "$QUARTUS_ROOT/modelsim_ae/bin" \
-        "$QUARTUS_ROOT/modelsim/bin"
-    do
-        if [ -d "$candidate" ] && [ -x "$candidate/vsim" ]; then
-            MODELSIM_BIN="$candidate"
-            break
-        fi
-    done
-
-    # Fall back to Questa only if ModelSim not found
-    if [ -z "$MODELSIM_BIN" ]; then
-        for candidate in \
-            "$QUARTUS_ROOT/questa_fse/bin" \
-            "$QUARTUS_ROOT/questa_fe/bin"
-        do
-            if [ -d "$candidate" ] && [ -x "$candidate/vsim" ]; then
-                MODELSIM_BIN="$candidate"
-                echo "  NOTE: Only Questa found — you may need a license file."
-                echo "        Set LM_LICENSE_FILE if you see license errors."
-                break
-            fi
-        done
-    fi
-
-    if [ -z "$MODELSIM_BIN" ]; then
-        # Last resort: search the entire Quartus tree
-        found=$(find "$QUARTUS_ROOT" -path "*/modelsim*/bin/vsim" -type f 2>/dev/null | head -1)
-        if [ -n "$found" ]; then
-            MODELSIM_BIN=$(dirname "$found")
-        fi
-    fi
-
-    [ -n "$MODELSIM_BIN" ] || fail "ModelSim not found. Is it installed with Quartus?"
-
-    # Put ModelSim at the FRONT of PATH so it takes priority over Questa
-    export PATH="$MODELSIM_BIN:$PATH"
-    ok "Simulator: $MODELSIM_BIN"
-
-    for tool in vlib vlog vsim; do
-        if [ -x "$MODELSIM_BIN/$tool" ]; then
-            ok "$tool  →  $MODELSIM_BIN/$tool"
-        else
-            fail "$tool not found in $MODELSIM_BIN"
-        fi
-    done
-fi
 
 # ------------------------------------------------------------------
 # Clean
@@ -223,7 +188,12 @@ ok "output_files/${PROJECT}.sof"
 # ------------------------------------------------------------------
 if [ $DO_PROGRAM -eq 1 ]; then
     step "Programming FPGA"
-    quartus_pgm -c USB-Blaster -m jtag \
+    CABLE=$(jtagconfig 2>/dev/null | grep -oP '^\d+\)\s+\K.*' | head -1)
+    if [ -z "$CABLE" ]; then
+        fail "No JTAG cable detected. Is the board connected and jtagd running?"
+    fi
+    ok "Cable: $CABLE"
+    quartus_pgm -c "$CABLE" -m jtag \
         -o "p;output_files/${PROJECT}.sof@2" || fail "Programming failed"
     ok "FPGA programmed"
 fi
@@ -234,6 +204,12 @@ fi
 step "Done"
 echo "  SOF: output_files/${PROJECT}.sof"
 echo ""
-echo "  To program:  quartus_pgm -c USB-Blaster -m jtag -o \"p;output_files/${PROJECT}.sof@2\""
-echo "  To connect:  nios2-terminal --device 2 --instance 0"
+echo "  To program: "
+echo "  $ ./build.sh --prog"
+echo "  or "
+echo "  $ make program-only"
+echo "  To connect: "
+echo "  $ python3 jtag_uart_raw.py"
+echo "  or "
+echo "  $ make connect"
 echo ""

@@ -22,44 +22,40 @@ module byte_deserializer #(
     output wire                      in_ready,
 
     // Wide word output (to pfe)
-    output wire  [WORD_BYTES*8-1:0]   out_data,
-    output wire                       out_valid,
+    output reg  [WORD_BYTES*8-1:0]   out_data,
+    output reg                       out_valid,
     input  wire                      out_ready
 );
 
-    assign out_data = in_data;
-    assign out_valid = in_valid;
-    assign in_ready = out_ready;
+    localparam W        = WORD_BYTES * 8;
+    localparam CNT_BITS = (WORD_BYTES == 1) ? 1 : $clog2(WORD_BYTES);
 
-    // localparam W        = WORD_BYTES * 8;
-    // localparam CNT_BITS = (WORD_BYTES == 1) ? 1 : $clog2(WORD_BYTES);
+    reg [CNT_BITS:0] count;  // extra bit so we can count up to WORD_BYTES
 
-    // reg [CNT_BITS:0] count;  // extra bit so we can count up to WORD_BYTES
+    // Block new bytes while a completed word is waiting to be accepted
+    assign in_ready = (count < WORD_BYTES) && !(out_valid && !out_ready);
 
-    // // Block new bytes while a completed word is waiting to be accepted
-    // assign in_ready = (count < WORD_BYTES) && !(out_valid && !out_ready);
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            out_data  <= {W{1'b0}};
+            count     <= 0;
+            out_valid <= 1'b0;
+        end else begin
+            // Clear out_valid once downstream accepts
+            if (out_valid && out_ready)
+                out_valid <= 1'b0;
 
-    // always @(posedge clk or negedge rst_n) begin
-    //     if (!rst_n) begin
-    //         out_data  <= {W{1'b0}};
-    //         count     <= 0;
-    //         out_valid <= 1'b0;
-    //     end else begin
-    //         // Clear out_valid once downstream accepts
-    //         if (out_valid && out_ready)
-    //             out_valid <= 1'b0;
+            // Shift bytes directly into out_data (MSB first)
+            if (in_valid && in_ready) begin
+                out_data <= {out_data[W-9:0], in_data};
 
-    //         // Shift bytes directly into out_data (MSB first)
-    //         if (in_valid && in_ready) begin
-    //             out_data <= {out_data[W-9:0], in_data};
-
-    //             if (count == WORD_BYTES - 1) begin
-    //                 out_valid <= 1'b1;
-    //                 count     <= 0;
-    //             end else begin
-    //                 count <= count + 1;
-    //             end
-    //         end
-    //     end
-    // end
+                if (count == WORD_BYTES - 1) begin
+                    out_valid <= 1'b1;
+                    count     <= 0;
+                end else begin
+                    count <= count + 1;
+                end
+            end
+        end
+    end
 endmodule
