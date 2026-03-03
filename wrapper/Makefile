@@ -11,17 +11,28 @@ RTL_DIR = rtl
 DV_DIR  = dv
 BUILD_DIR = build
 
-
+RTL_FIFO      = $(RTL_DIR)/fifo.v 
 RTL_DESER     = $(RTL_DIR)/byte_deserializer.v 
 RTL_SER       = $(RTL_DIR)/byte_serializer.v
 RTL_JTAG_CTRL = $(RTL_DIR)/jtag_uart_controller.v
 
+TB_FIFO       = $(DV_DIR)/tb_fifo.v
 TB_DESER      = $(DV_DIR)/tb_byte_deserializer.v
 TB_SER        = $(DV_DIR)/tb_byte_serializer.v
 TB_JTAG       = $(DV_DIR)/tb_jtag_uart_controller.v
 MODEL_JTAG    = $(DV_DIR)/jtag_uart_model.v
 
-all: deser ser jtag
+all: fifo deser ser jtag
+
+fifo:
+	@mkdir -p $(BUILD_DIR)/fifo
+	@echo "== Building tb_fifo =="
+	$(VERILATOR) $(VERILATOR_FLAGS) \
+		--top-module tb_fifo \
+		-Mdir $(BUILD_DIR)/fifo \
+		$(RTL_FIFO) $(TB_FIFO)
+	@echo "== Running tb_fifo =="
+	./$(BUILD_DIR)/fifo/Vtb_fifo
 
 deser:
 	@mkdir -p $(BUILD_DIR)/deser
@@ -54,6 +65,6 @@ jtag:
 	./$(BUILD_DIR)/jtag/Vtb_jtag_uart_controller
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) *.vcd
 
-.PHONY: all deser ser jtag clean
+.PHONY: all fifo deser ser jtag clean

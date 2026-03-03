@@ -16,6 +16,8 @@
 //
 // The PC must send data in multiples of WORD_BYTES.
 
+`default_nettype none
+
 module jtag_uart_top (
     input wire CLOCK_50,
     input wire RSTN
@@ -24,7 +26,7 @@ module jtag_uart_top (
     // =====================================================
     // Change this parameter to set the word width
     // =====================================================
-    localparam WORD_BYTES = 4;   // 4 bytes = 32 bits
+    localparam WORD_BYTES = 1;   // 4 bytes = 32 bits
     // =====================================================
 
     wire rst_n = RSTN;
@@ -39,26 +41,32 @@ module jtag_uart_top (
     wire        av_waitrequest;
 
     // Controller RX stream (8-bit bytes from PC)
-    wire [7:0]  ctrl_rx_data;
-    wire        ctrl_rx_valid;
-    wire        ctrl_rx_ready;
+    wire [7:0]  ctrl_fifo_data;
+    wire        ctrl_fifo_valid;
+    wire        ctrl_fifo_ready;
+    // wire [7:0]  fifo_deser_data;
+    // wire        fifo_deser_valid;
+    // wire        fifo_deser_ready;
 
     // Controller TX stream (8-bit bytes to PC)
-    wire [7:0]  ctrl_tx_data;
-    wire        ctrl_tx_valid;
-    wire        ctrl_tx_ready;
+    // wire [7:0]  ser_fifo_data;
+    // wire        ser_fifo_valid;
+    // wire        ser_fifo_ready;
+    wire [7:0]  fifo_ctrl_data;
+    wire        fifo_ctrl_valid;
+    wire        fifo_ctrl_ready;
 
-    // Wide word: deserializer -> pfe
-    wire [WORD_BYTES*8-1:0] deser_data;
-    wire                    deser_valid;
-    wire                    deser_ready;
+    // // Wide word: deserializer -> pfe
+    // wire [WORD_BYTES*8-1:0] deser_data;
+    // wire                    deser_valid;
+    // wire                    deser_ready;
 
-    // Wide word: pfe -> serializer
-    wire [WORD_BYTES*8-1:0] pfe_data;
-    wire                    pfe_valid;
-    wire                    pfe_ready;
+    // // Wide word: pfe -> serializer
+    // wire [WORD_BYTES*8-1:0] pfe_data;
+    // wire                    pfe_valid;
+    // wire                    pfe_ready;
 
-    // --- Platform Designer system ---
+    // Platform Designer system
     jtag_uart_sys u_sys (
         .clk_clk                              (CLOCK_50),
         .reset_reset_n                        (rst_n),
@@ -71,7 +79,7 @@ module jtag_uart_top (
         .jtag_uart_avalon_waitrequest         (av_waitrequest)
     );
 
-    // --- JTAG UART controller ---
+    // JTAG UART controller
     jtag_uart_controller u_ctrl (
         .clk              (CLOCK_50),
         .rst_n            (rst_n),
@@ -82,54 +90,89 @@ module jtag_uart_top (
         .av_write_n       (av_write_n),
         .av_writedata     (av_writedata),
         .av_waitrequest   (av_waitrequest),
-        .rx_data          (ctrl_rx_data),
-        .rx_valid         (ctrl_rx_valid),
-        .rx_ready         (ctrl_rx_ready),
-        .tx_data          (ctrl_tx_data),
-        .tx_valid         (ctrl_tx_valid),
-        .tx_ready         (ctrl_tx_ready)
+        .rx_data          (ctrl_fifo_data),
+        .rx_valid         (ctrl_fifo_valid),
+        .rx_ready         (ctrl_fifo_ready),
+        .tx_data          (fifo_ctrl_data),
+        .tx_valid         (fifo_ctrl_valid),
+        .tx_ready         (fifo_ctrl_ready)
     );
 
-    // --- Deserializer: N bytes → wide word ---
-    byte_deserializer #(
-        .WORD_BYTES (WORD_BYTES)
-    ) u_deser (
-        .clk        (CLOCK_50),
-        .rst_n      (rst_n),
-        .in_data    (ctrl_rx_data),
-        .in_valid   (ctrl_rx_valid),
-        .in_ready   (ctrl_rx_ready),
-        .out_data   (deser_data),
-        .out_valid  (deser_valid),
-        .out_ready  (deser_ready)
+    // FIFO between ctrl and deserializer
+    fifo #(
+      .DSIZE (8),
+      .ASIZE (8)
+    ) u_fifo_deser (
+      .clk_i        (CLOCK_50),     
+      .rst_ni       (rst_n),    
+      .in_valid_i   (ctrl_fifo_valid),
+      .in_ready_o   (ctrl_fifo_ready),
+      .in_data_i    (ctrl_fifo_data),
+      .out_valid_o  (fifo_ctrl_valid),
+      .out_ready_i  (fifo_ctrl_ready),
+      .out_data_o   (fifo_ctrl_data)
+      // .out_valid_o  (fifo_deser_valid),
+      // .out_ready_i  (fifo_deser_ready),
+      // .out_data_o   (fifo_deser_data)
     );
 
-    // --- Processing module ---
-    pfe #(
-        .WORD_BYTES (WORD_BYTES)
-    ) u_pfe (
-        .clk        (CLOCK_50),
-        .rst_n      (rst_n),
-        .in_data    (deser_data),
-        .in_valid   (deser_valid),
-        .in_ready   (deser_ready),
-        .out_data   (pfe_data),
-        .out_valid  (pfe_valid),
-        .out_ready  (pfe_ready)
-    );
+    // // Deserializer: N bytes → wide word
+    // byte_deserializer #(
+    //     .WORD_BYTES (WORD_BYTES)
+    // ) u_deser (
+    //     .clk        (CLOCK_50),
+    //     .rst_n      (rst_n),
+    //     .in_data    (fifo_deser_data),
+    //     .in_valid   (fifo_deser_valid),
+    //     .in_ready   (fifo_deser_ready),
+    //     .out_data   (deser_data),
+    //     .out_valid  (deser_valid),
+    //     .out_ready  (deser_ready)
+    // );
 
-    // --- Serializer: wide word → N bytes ---
-    byte_serializer #(
-        .WORD_BYTES (WORD_BYTES)
-    ) u_ser (
-        .clk        (CLOCK_50),
-        .rst_n      (rst_n),
-        .in_data    (pfe_data),
-        .in_valid   (pfe_valid),
-        .in_ready   (pfe_ready),
-        .out_data   (ctrl_tx_data),
-        .out_valid  (ctrl_tx_valid),
-        .out_ready  (ctrl_tx_ready)
-    );
+    // // Processing module
+    // pfe #(
+    //     .WORD_BYTES (WORD_BYTES)
+    // ) u_pfe (
+    //     .clk        (CLOCK_50),
+    //     .rst_n      (rst_n),
+    //     .in_data    (deser_data),
+    //     .in_valid   (deser_valid),
+    //     .in_ready   (deser_ready),
+    //     .out_data   (pfe_data),
+    //     .out_valid  (pfe_valid),
+    //     .out_ready  (pfe_ready)
+    // );
+
+    // // Serializer: wide word → N bytes
+    // byte_serializer #(
+    //     .WORD_BYTES (WORD_BYTES)
+    // ) u_ser (
+    //     .clk        (CLOCK_50),
+    //     .rst_n      (rst_n),
+    //     .in_data    (pfe_data),
+    //     .in_valid   (pfe_valid),
+    //     .in_ready   (pfe_ready),
+    //     .out_data   (ser_fifo_data),
+    //     .out_valid  (ser_fifo_valid),
+    //     .out_ready  (ser_fifo_ready)
+    // );
+
+    // // FIFO between serializer and ctrl
+    // fifo #(
+    //   .DSIZE (8), 
+    //   .ASIZE (8)
+    // ) u_fifo_ser (
+    //   .clk_i        (CLOCK_50),     
+    //   .rst_ni       (rst_n),    
+    //   .in_valid_i   (ser_fifo_data),
+    //   .in_ready_o   (ser_fifo_ready),
+    //   .in_data_i    (ser_fifo_valid),
+    //   .out_valid_o  (fifo_ctrl_valid),
+    //   .out_ready_i  (fifo_ctrl_ready),
+    //   .out_data_o   (fifo_ctrl_data)
+    // );
 
 endmodule
+
+`default_nettype wire

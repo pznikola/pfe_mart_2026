@@ -1,194 +1,178 @@
-// jtag_uart_controller.v
-//
-// Avalon-MM master that polls the JTAG UART IP.
-// Exposes a simple rx/tx streaming interface for external processing.
-//
-//   rx_data + rx_valid + rx_ready  —  bytes received from PC
-//   tx_data + tx_valid + tx_ready  —  bytes to send back to PC
-
 module jtag_uart_controller (
     input  wire        clk,
     input  wire        rst_n,
 
-    // Avalon-MM master to JTAG UART slave
+    // Avalon-MM master interface to JTAG UART slave
     output reg         av_chipselect,
-    output reg         av_address,
+    output reg         av_address,     // 0 = data reg, 1 = control reg
     output reg         av_read_n,
     input  wire [31:0] av_readdata,
     output reg         av_write_n,
     output reg  [31:0] av_writedata,
     input  wire        av_waitrequest,
 
-    // RX streaming interface (data from PC)
+    // RX streaming interface (data read from UART)
     output reg  [7:0]  rx_data,
     output reg         rx_valid,
     input  wire        rx_ready,
 
-    // TX streaming interface (data to PC)
+    // TX streaming interface (data to write to UART)
     input  wire [7:0]  tx_data,
     input  wire        tx_valid,
-    output wire        tx_ready   // now a wire, not reg
+    output reg         tx_ready
 );
 
-    localparam S_IDLE        = 4'd0,
-               S_READ_DATA   = 4'd1,
-               S_WAIT_READ   = 4'd2,
-               S_PROC_READ   = 4'd9,   // process captured DATA read
-               S_HOLD_RX     = 4'd3,   // hold rx_valid until rx_ready
-               S_CHECK_TX    = 4'd4,
-               S_READ_CTRL   = 4'd5,
-               S_WAIT_CTRL   = 4'd6,
-               S_PROC_CTRL   = 4'd10,  // process captured CONTROL read
-               S_WRITE_DATA  = 4'd7,
-               S_WAIT_WRITE  = 4'd8;
+    // FSM states
+    localparam S_IDLE       = 3'd0;
+    localparam S_RD_WAIT    = 3'd1;  // Wait for data register read to complete
+    localparam S_RX_STREAM  = 3'd2;  // Push byte onto RX streaming interface
+    localparam S_WR_CHECK   = 3'd3;  // Read control register to check WSPACE
+    localparam S_WR_WAIT    = 3'd4;  // Wait for control register read to complete
+    localparam S_WR_DATA    = 3'd5;  // Assert write to data register
+    localparam S_WR_HOLD    = 3'd6;  // Wait for write to complete
 
-    reg [3:0] state;
-    reg [7:0] delay;
-    reg [31:0] rd_capture; // captures av_readdata (model may register readdata)
+    reg [2:0] state;
 
-    // TX holding register
-    reg [7:0] tx_hold;
-    reg       tx_pending;
-
-    // tx_ready: accept a new byte only when no byte is already pending
-    assign tx_ready = !tx_pending;
-
-    // Latch tx_data when tx_valid & tx_ready
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            tx_hold    <= 8'd0;
-            tx_pending <= 1'b0;
-        end else begin
-            if (tx_valid && tx_ready) begin
-                tx_hold    <= tx_data;
-                tx_pending <= 1'b1;
-            end else if (state == S_WAIT_WRITE && !av_waitrequest) begin
-                tx_pending <= 1'b0;
-            end
-        end
-    end
+    // Latched values
+    reg [31:0] rd_data_latched;
+    reg [15:0] wspace_latched;
+    reg [7:0]  tx_data_latched;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            state         <= S_IDLE;
-            av_chipselect <= 1'b0;
-            av_address    <= 1'b0;
-            av_read_n     <= 1'b1;
-            av_write_n    <= 1'b1;
-            av_writedata  <= 32'd0;
-            rx_data       <= 8'd0;
-            rx_valid      <= 1'b0;
-            delay         <= 8'd0;
-            rd_capture    <= 32'd0;
+            state          <= S_IDLE;
+            av_chipselect  <= 1'b0;
+            av_address     <= 1'b0;
+            av_read_n      <= 1'b1;
+            av_write_n     <= 1'b1;
+            av_writedata   <= 32'd0;
+            rx_data        <= 8'd0;
+            rx_valid       <= 1'b0;
+            tx_ready       <= 1'b0;
+            rd_data_latched <= 32'd0;
+            wspace_latched  <= 16'd0;
+            tx_data_latched <= 8'd0;
         end else begin
             case (state)
-                S_IDLE: begin
-                    av_chipselect <= 1'b0;
-                    av_read_n     <= 1'b1;
-                    av_write_n    <= 1'b1;
-                    if (delay < 8'd7) begin
-                        delay <= delay + 1;
-                    end else begin
-                        delay <= 8'd0;
-                        state <= S_READ_DATA;
-                    end
-                end
 
-                // Poll DATA register for incoming byte
-                S_READ_DATA: begin
+                // -------------------------------------------------------
+                // IDLE: start by reading the data register
+                // -------------------------------------------------------
+                S_IDLE: begin
+                    rx_valid <= 1'b0;
+                    tx_ready <= 1'b0;
+                    // Begin read from data register (address 0)
                     av_chipselect <= 1'b1;
                     av_address    <= 1'b0;
                     av_read_n     <= 1'b0;
                     av_write_n    <= 1'b1;
-                    state         <= S_WAIT_READ;
+                    state         <= S_RD_WAIT;
                 end
 
-                S_WAIT_READ: begin
+                // -------------------------------------------------------
+                // RD_WAIT: wait for Avalon read to complete
+                // -------------------------------------------------------
+                S_RD_WAIT: begin
                     if (!av_waitrequest) begin
-                        // Read transfer completes this cycle, but av_readdata may be registered.
-                        // Capture it and evaluate on the next cycle.
+                        rd_data_latched <= av_readdata;
+                        // Deassert bus
                         av_chipselect <= 1'b0;
                         av_read_n     <= 1'b1;
-                        rd_capture    <= av_readdata;
-                        state         <= S_PROC_READ;
+
+                        // Check RVALID (bit 15)
+                        if (av_readdata[15]) begin
+                            // Valid data - present on RX streaming interface
+                            rx_data  <= av_readdata[7:0];
+                            rx_valid <= 1'b1;
+                            state    <= S_RX_STREAM;
+                        end else begin
+                            // FIFO empty - switch to TX phase
+                            rx_valid <= 1'b0;
+                            state    <= S_WR_CHECK;
+                        end
                     end
+                    // else: stay here, bus is stalling
                 end
 
-                // Process captured DATA read (avoids sampling stale av_readdata)
-                S_PROC_READ: begin
-                    if (rd_capture[15]) begin   // RVALID
-                        rx_data  <= rd_capture[7:0];
-                        rx_valid <= 1'b1;
-                        state    <= S_HOLD_RX;
-                    end else begin
-                        state <= S_CHECK_TX;
-                    end
-                end
-
-                // Hold rx_valid high until the deserializer accepts the byte.
-                // Only then move on — this prevents silent byte drops.
-                S_HOLD_RX: begin
+                // -------------------------------------------------------
+                // RX_STREAM: wait for downstream to accept the byte
+                // -------------------------------------------------------
+                S_RX_STREAM: begin
                     if (rx_ready) begin
                         rx_valid <= 1'b0;
-                        state    <= S_CHECK_TX;
+                        // Try to read next byte from FIFO
+                        av_chipselect <= 1'b1;
+                        av_address    <= 1'b0;
+                        av_read_n     <= 1'b0;
+                        av_write_n    <= 1'b1;
+                        state         <= S_RD_WAIT;
                     end
+                    // else: hold rx_data and rx_valid, wait for ready
                 end
 
-                // Check if we have a byte to transmit
-                S_CHECK_TX: begin
-                    if (tx_pending) begin
-                        state <= S_READ_CTRL;
-                    end else begin
-                        state <= S_IDLE;
-                    end
-                end
-
-                // Read CONTROL register for WSPACE
-                S_READ_CTRL: begin
+                // -------------------------------------------------------
+                // WR_CHECK: read control register to get WSPACE
+                // -------------------------------------------------------
+                S_WR_CHECK: begin
+                    tx_ready <= 1'b0;
                     av_chipselect <= 1'b1;
-                    av_address    <= 1'b1;
+                    av_address    <= 1'b1;   // Control register
                     av_read_n     <= 1'b0;
                     av_write_n    <= 1'b1;
-                    state         <= S_WAIT_CTRL;
+                    state         <= S_WR_WAIT;
                 end
 
-                S_WAIT_CTRL: begin
+                // -------------------------------------------------------
+                // WR_WAIT: wait for control register read to complete
+                // -------------------------------------------------------
+                S_WR_WAIT: begin
                     if (!av_waitrequest) begin
-                        av_chipselect <= 1'b0;
-                        av_read_n     <= 1'b1;
-                        rd_capture    <= av_readdata;
-                        state         <= S_PROC_CTRL;
+                        wspace_latched <= av_readdata[31:16];
+                        av_chipselect  <= 1'b0;
+                        av_read_n      <= 1'b1;
+
+                        if (av_readdata[31:16] != 16'd0 && tx_valid) begin
+                            // There's space and upstream has data - latch it
+                            tx_data_latched <= tx_data;
+                            tx_ready        <= 1'b1;
+                            state           <= S_WR_DATA;
+                        end else begin
+                            // No space or no data to send - go back to RX phase
+                            state <= S_IDLE;
+                        end
                     end
                 end
 
-                // Process captured CONTROL read (avoids sampling stale av_readdata)
-                S_PROC_CTRL: begin
-                    if (rd_capture[31:16] > 0)  // WSPACE > 0
-                        state <= S_WRITE_DATA;
-                    else
-                        state <= S_READ_CTRL;    // retry
+                // -------------------------------------------------------
+                // WR_DATA: assert write bus signals (one setup cycle)
+                // -------------------------------------------------------
+                S_WR_DATA: begin
+                    tx_ready       <= 1'b0;
+                    av_chipselect  <= 1'b1;
+                    av_address     <= 1'b0;   // Data register
+                    av_read_n      <= 1'b1;
+                    av_write_n     <= 1'b0;
+                    av_writedata   <= {24'd0, tx_data_latched};
+                    state          <= S_WR_HOLD;
                 end
 
-                // Write byte to DATA register
-                S_WRITE_DATA: begin
-                    av_chipselect <= 1'b1;
-                    av_address    <= 1'b0;
-                    av_read_n     <= 1'b1;
-                    av_write_n    <= 1'b0;
-                    av_writedata  <= {24'd0, tx_hold};
-                    state         <= S_WAIT_WRITE;
-                end
-
-                S_WAIT_WRITE: begin
+                // -------------------------------------------------------
+                // WR_HOLD: wait for waitrequest to deassert
+                // -------------------------------------------------------
+                S_WR_HOLD: begin
                     if (!av_waitrequest) begin
+                        // Write accepted - deassert bus, go back to RX phase
                         av_chipselect <= 1'b0;
                         av_write_n    <= 1'b1;
                         state         <= S_IDLE;
                     end
+                    // else: hold bus signals, slave is stalling
                 end
 
                 default: state <= S_IDLE;
+
             endcase
         end
     end
+
 endmodule
