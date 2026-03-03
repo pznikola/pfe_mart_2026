@@ -6,181 +6,460 @@
 
 module tb_byte_serializer;
 
-  // ---- configure ----
-  localparam integer WORD_BYTES = 4;
-  localparam integer W = WORD_BYTES*8;
+    parameter NUM_BYTES = 4;
 
-  // Print control (1 = lots of prints, 0 = only PASS/ERROR)
-  localparam bit VERBOSE = (`TB_VERBOSE != 0);
+    // Print control (1 = lots of prints, 0 = only PASS/ERROR)
+    localparam bit VERBOSE = (`TB_VERBOSE != 0);
+    localparam WIDTH = NUM_BYTES * 8;
 
-  // ---- clock/reset ----
-  reg clk = 0;
-  reg rst_n = 0;
-  always #5 clk = ~clk;
+    // ----------------------------------------------------------------
+    // Clock / Reset
+    // ----------------------------------------------------------------
+    reg clk;
+    reg rst_n;
 
-  // ---- DUT signals ----
-  reg  [W-1:0] in_data;
-  reg          in_valid;
-  wire         in_ready;
+    initial clk = 0;
+    always #5 clk = ~clk; // 100 MHz
 
-  wire [7:0]   out_data;
-  wire         out_valid;
-  reg          out_ready;
+    // ----------------------------------------------------------------
+    // DUT signals
+    // ----------------------------------------------------------------
+    reg  [WIDTH-1:0] in_data;
+    reg              in_valid;
+    wire             in_ready;
 
-  // ---- instantiate DUT ----
-  byte_serializer #(.WORD_BYTES(WORD_BYTES)) dut (
-    .clk      (clk),
-    .rst_n    (rst_n),
-    .in_data  (in_data),
-    .in_valid (in_valid),
-    .in_ready (in_ready),
-    .out_data (out_data),
-    .out_valid(out_valid),
-    .out_ready(out_ready)
-  );
+    wire [7:0]       out_data;
+    wire             out_valid;
+    reg              out_ready;
 
-  integer i;
-  integer total_words_sent = 0;
-  integer total_words_received = 0;
+    // ----------------------------------------------------------------
+    // DUT instantiation
+    // ----------------------------------------------------------------
+    byte_serializer #(
+        .NUM_BYTES(NUM_BYTES)
+    ) dut (
+        .clk       (clk),
+        .rst_n     (rst_n),
+        .in_data   (in_data),
+        .in_valid  (in_valid),
+        .in_ready  (in_ready),
+        .out_data  (out_data),
+        .out_valid (out_valid),
+        .out_ready (out_ready)
+    );
 
-  // Expected bytes queue for checking output stream (MSB-first)
-  localparam integer BQDEPTH = 2048;
-  reg [7:0] exp_bq [0:BQDEPTH-1];
-  integer bq_wr = 0, bq_rd = 0;
-  integer exp_bytes_total = 0;
-  integer got_bytes_total = 0;
+    // ----------------------------------------------------------------
+    // Scoreboard
+    // ----------------------------------------------------------------
+    integer errors;
+    integer test_num;
 
-  // For pretty printing which byte within a word we are receiving
-  integer rx_byte_in_word = 0;
+    // ----------------------------------------------------------------
+    // Helper tasks
+    // ----------------------------------------------------------------
 
-  task push_exp_byte(input [7:0] b);
-    begin
-      exp_bq[bq_wr] = b;
-      bq_wr = (bq_wr + 1) % BQDEPTH;
-      exp_bytes_total = exp_bytes_total + 1;
+    // Apply synchronous reset for N cycles
+    task reset(input integer n);
+        begin
+            rst_n = 1'b0;
+            in_valid = 1'b0;
+            in_data = {WIDTH{1'b0}};
+            out_ready = 1'b0;
+            repeat (n) @(posedge clk);
+            #1;
+            rst_n = 1'b1;
+            @(posedge clk);
+            #1;
+        end
+    endtask
+
+    // Drive a word on the input interface (blocks until handshake)
+    // Handshake completes on the posedge where both in_valid & in_ready are high.
+    // in_ready is combinational (!busy), so we check it BEFORE the consuming edge.
+    task drive_word(input [WIDTH-1:0] word);
+        begin
+            in_data = word;
+            in_valid = 1'b1;
+            // Wait until in_ready is high, then let the posedge consume it
+            while (!in_ready) begin @(posedge clk); #1; end
+            @(posedge clk); #1;  // This edge is the handshake
+            in_valid = 1'b0;
+            in_data = {WIDTH{1'bx}};
+        end
+    endtask
+
+    // Receive one byte from output interface (blocks until handshake)
+    // Handshake fires on the posedge where out_valid & out_ready are both high.
+    // out_valid is registered, so we check it BEFORE the consuming edge.
+    task receive_byte(output [7:0] b);
+        begin
+            out_ready = 1'b1;
+            // Wait until out_valid is high (pre-edge state)
+            while (!out_valid) begin @(posedge clk); #1; end
+            // out_valid is high now; capture data then let next edge consume
+            b = out_data;
+            @(posedge clk); #1;  // This edge is the handshake
+            out_ready = 1'b0;
+        end
+    endtask
+
+    // Receive one byte with out_ready already high (for back-to-back)
+    task receive_byte_ready_high(output [7:0] b);
+        begin
+            // Wait until out_valid is high (pre-edge state)
+            while (!out_valid) begin @(posedge clk); #1; end
+            b = out_data;
+            @(posedge clk); #1;  // This edge is the handshake
+        end
+    endtask
+
+    // Check one complete serialized word (little-endian byte order)
+    task check_word(input [WIDTH-1:0] expected, input string label);
+        reg [7:0] got_byte;
+        reg [7:0] exp_byte;
+        integer i;
+        begin
+            for (i = 0; i < NUM_BYTES; i = i + 1) begin
+                receive_byte(got_byte);
+                exp_byte = expected[i*8 +: 8];
+                if (got_byte !== exp_byte) begin
+                    $display("ERROR [%s] byte %0d: expected 0x%02h, got 0x%02h",
+                             label, i, exp_byte, got_byte);
+                    errors = errors + 1;
+                end else if (VERBOSE) begin
+                    $display("  [%s] byte %0d OK: 0x%02h", label, i, got_byte);
+                end
+            end
+        end
+    endtask
+
+    // ----------------------------------------------------------------
+    // Test sequences
+    // ----------------------------------------------------------------
+
+    // T1 – Basic single-word serialization
+    task test_basic_single_word;
+        reg [WIDTH-1:0] word;
+        begin
+            test_num = 1;
+            if (VERBOSE) $display("\n=== T1: Basic single-word serialization ===");
+
+            word = 0;
+            begin : build_word
+                integer k;
+                for (k = 0; k < NUM_BYTES; k = k + 1)
+                    word[k*8 +: 8] = k[7:0] + 8'd1; // 0x01, 0x02, ...
+            end
+
+            drive_word(word);
+            check_word(word, "T1");
+
+            if (VERBOSE) $display("T1 done");
+        end
+    endtask
+
+    // T2 – All-ones and all-zeros
+    task test_all_ones_zeros;
+        begin
+            test_num = 2;
+            if (VERBOSE) $display("\n=== T2: All-ones / all-zeros ===");
+
+            drive_word({WIDTH{1'b1}});
+            check_word({WIDTH{1'b1}}, "T2-ones");
+
+            drive_word({WIDTH{1'b0}});
+            check_word({WIDTH{1'b0}}, "T2-zeros");
+
+            if (VERBOSE) $display("T2 done");
+        end
+    endtask
+
+    // T3 – Back-to-back words (output always ready)
+    task test_back_to_back;
+        reg [WIDTH-1:0] word_a, word_b;
+        reg [7:0] got_byte, exp_byte;
+        integer i;
+        begin
+            test_num = 3;
+            if (VERBOSE) $display("\n=== T3: Back-to-back words ===");
+
+            word_a = {WIDTH{1'b0}};
+            word_b = {WIDTH{1'b0}};
+            begin : build_t3
+                integer k;
+                for (k = 0; k < NUM_BYTES; k = k + 1) begin
+                    word_a[k*8 +: 8] = (8'hA0 + k[7:0]);
+                    word_b[k*8 +: 8] = (8'hB0 + k[7:0]);
+                end
+            end
+
+            // Drive first word
+            drive_word(word_a);
+
+            // Keep out_ready high; while receiving word_a bytes,
+            // present word_b as soon as in_ready goes high
+            out_ready = 1'b1;
+
+            fork
+                // Receiver: collect word_a then word_b bytes
+                begin : recv
+                    for (i = 0; i < NUM_BYTES; i = i + 1) begin
+                        receive_byte_ready_high(got_byte);
+                        exp_byte = word_a[i*8 +: 8];
+                        if (got_byte !== exp_byte) begin
+                            $display("ERROR [T3-a] byte %0d: expected 0x%02h, got 0x%02h",
+                                     i, exp_byte, got_byte);
+                            errors = errors + 1;
+                        end
+                    end
+                    for (i = 0; i < NUM_BYTES; i = i + 1) begin
+                        receive_byte_ready_high(got_byte);
+                        exp_byte = word_b[i*8 +: 8];
+                        if (got_byte !== exp_byte) begin
+                            $display("ERROR [T3-b] byte %0d: expected 0x%02h, got 0x%02h",
+                                     i, exp_byte, got_byte);
+                            errors = errors + 1;
+                        end
+                    end
+                end
+
+                // Sender: push word_b once serializer is free
+                begin : send
+                    while (!in_ready) begin @(posedge clk); #1; end
+                    drive_word(word_b);
+                end
+            join
+
+            #1;
+            out_ready = 1'b0;
+            if (VERBOSE) $display("T3 done");
+        end
+    endtask
+
+    // T4 – Stalled output (out_ready deasserted mid-transfer)
+    task test_stalled_output;
+        reg [WIDTH-1:0] word;
+        reg [7:0] got_byte, exp_byte;
+        integer i;
+        begin
+            test_num = 4;
+            if (VERBOSE) $display("\n=== T4: Stalled output ===");
+
+            word = {WIDTH{1'b0}};
+            begin : build_t4
+                integer k;
+                for (k = 0; k < NUM_BYTES; k = k + 1)
+                    word[k*8 +: 8] = (8'hC0 + k[7:0]);
+            end
+
+            drive_word(word);
+
+            for (i = 0; i < NUM_BYTES; i = i + 1) begin
+                // Accept one byte
+                receive_byte(got_byte);
+                exp_byte = word[i*8 +: 8];
+                if (got_byte !== exp_byte) begin
+                    $display("ERROR [T4] byte %0d: expected 0x%02h, got 0x%02h",
+                             i, exp_byte, got_byte);
+                    errors = errors + 1;
+                end
+                // Stall for a few cycles between each byte
+                out_ready = 1'b0;
+                repeat (3) @(posedge clk);
+                #1;
+            end
+
+            if (VERBOSE) $display("T4 done");
+        end
+    endtask
+
+    // T5 – Reset mid-transfer
+    task test_reset_mid_transfer;
+        reg [WIDTH-1:0] word;
+        reg [7:0] dummy;
+        begin
+            test_num = 5;
+            if (VERBOSE) $display("\n=== T5: Reset mid-transfer ===");
+
+            word = {WIDTH{1'b0}};
+            begin : build_t5
+                integer k;
+                for (k = 0; k < NUM_BYTES; k = k + 1)
+                    word[k*8 +: 8] = (8'hD0 + k[7:0]);
+            end
+
+            drive_word(word);
+
+            // Accept first byte only
+            if (NUM_BYTES > 1) begin
+                receive_byte(dummy);
+            end
+
+            // Hit reset
+            reset(2);
+
+            // After reset: out_valid must be low, in_ready must be high
+            if (out_valid !== 1'b0) begin
+                $display("ERROR [T5] out_valid not 0 after reset");
+                errors = errors + 1;
+            end
+            if (in_ready !== 1'b1) begin
+                $display("ERROR [T5] in_ready not 1 after reset");
+                errors = errors + 1;
+            end
+
+            // Verify module still works after reset
+            word = {WIDTH{1'b0}};
+            begin : build_t5b
+                integer k;
+                for (k = 0; k < NUM_BYTES; k = k + 1)
+                    word[k*8 +: 8] = (8'hE0 + k[7:0]);
+            end
+            drive_word(word);
+            check_word(word, "T5-post-rst");
+
+            if (VERBOSE) $display("T5 done");
+        end
+    endtask
+
+    // T6 – in_valid asserted while busy (should be ignored / not accepted)
+    task test_input_while_busy;
+        reg [WIDTH-1:0] word;
+        begin
+            test_num = 6;
+            if (VERBOSE) $display("\n=== T6: Input while busy ===");
+
+            word = {WIDTH{1'b0}};
+            begin : build_t6
+                integer k;
+                for (k = 0; k < NUM_BYTES; k = k + 1)
+                    word[k*8 +: 8] = (8'hF0 + k[7:0]);
+            end
+
+            drive_word(word);
+
+            // While DUT is serialising, assert in_valid with garbage
+            if (NUM_BYTES > 1) begin
+                in_data = {WIDTH{1'b1}};
+                in_valid = 1'b1;
+                repeat (2) @(posedge clk);
+                // in_ready should be low while busy
+                if (in_ready !== 1'b0) begin
+                    $display("ERROR [T6] in_ready should be 0 while busy");
+                    errors = errors + 1;
+                end
+                #1;
+                in_valid = 1'b0;
+            end
+
+            check_word(word, "T6");
+
+            if (VERBOSE) $display("T6 done");
+        end
+    endtask
+
+    // T7 – Randomised stress test
+    task test_random_stress;
+        integer n, i;
+        reg [WIDTH-1:0] word;
+        reg [7:0] got_byte, exp_byte;
+        begin
+            test_num = 7;
+            if (VERBOSE) $display("\n=== T7: Random stress (%0d words) ===", 20);
+
+            for (n = 0; n < 20; n = n + 1) begin
+                // Random word
+                word = {WIDTH{1'b0}};
+                begin : rand_w
+                    integer k;
+                    for (k = 0; k < NUM_BYTES; k = k + 1)
+                        word[k*8 +: 8] = $urandom[7:0];
+                end
+
+                drive_word(word);
+
+                for (i = 0; i < NUM_BYTES; i = i + 1) begin
+                    // Random stall on receiver
+                    if (($urandom % 3) == 0) begin
+                        out_ready = 1'b0;
+                        repeat (1 + ($urandom % 4)) @(posedge clk);
+                        #1;
+                    end
+                    receive_byte(got_byte);
+                    exp_byte = word[i*8 +: 8];
+                    if (got_byte !== exp_byte) begin
+                        $display("ERROR [T7] word %0d byte %0d: exp 0x%02h got 0x%02h",
+                                 n, i, exp_byte, got_byte);
+                        errors = errors + 1;
+                    end
+                end
+            end
+            if (VERBOSE) $display("T7 done");
+        end
+    endtask
+
+    // T8 – Walking-ones pattern (catch stuck bits in shift register)
+    task test_walking_ones;
+        integer b;
+        reg [WIDTH-1:0] word;
+        begin
+            test_num = 8;
+            if (VERBOSE) $display("\n=== T8: Walking-ones ===");
+
+            for (b = 0; b < WIDTH; b = b + 1) begin
+                word = ({{(WIDTH-1){1'b0}}, 1'b1} << b);
+                drive_word(word);
+                check_word(word, "T8");
+            end
+            if (VERBOSE) $display("T8 done");
+        end
+    endtask
+
+    // ----------------------------------------------------------------
+    // Timeout watchdog
+    // ----------------------------------------------------------------
+    initial begin
+        #(500_000);
+        $display("TIMEOUT: simulation exceeded time limit");
+        $finish;
     end
-  endtask
 
-  task check_got_byte(input [7:0] b);
-    reg [7:0] e;
-    begin
-      e = exp_bq[bq_rd];
+    // ----------------------------------------------------------------
+    // Main stimulus
+    // ----------------------------------------------------------------
+    initial begin
+        errors = 0;
+        reset(3);
 
-      // Print BEFORE advancing pointers/counters (easier to read)
-      if (VERBOSE) begin
-        $display("[%0t] RX byte #%0d (word %0d, idx %0d): got=0x%02h exp=0x%02h %s",
-                 $time,
-                 got_bytes_total,
-                 (got_bytes_total / WORD_BYTES),
-                 rx_byte_in_word,
-                 b, e,
-                 (b===e) ? "OK" : "MISMATCH");
-      end
+        test_basic_single_word;
+        test_all_ones_zeros;
+        test_back_to_back;
+        test_stalled_output;
+        test_reset_mid_transfer;
+        test_input_while_busy;
+        test_random_stress;
+        test_walking_ones;
 
-      bq_rd = (bq_rd + 1) % BQDEPTH;
-      got_bytes_total = got_bytes_total + 1;
+        repeat (5) @(posedge clk);
 
-      // Track byte index within current word
-      if (rx_byte_in_word == WORD_BYTES-1) rx_byte_in_word = 0;
-      else                                rx_byte_in_word = rx_byte_in_word + 1;
-
-      if (b !== e) begin
-        $display("ERROR: Byte mismatch at time %0t", $time);
-        $display("  expected = 0x%02h", e);
-        $display("  got      = 0x%02h", b);
-        $fatal(1);
-      end
-    end
-  endtask
-
-  // Send one word, holding in_valid until accepted (in_ready high)
-  task send_word(input [W-1:0] w);
-    integer k;
-    begin
-      // enqueue expected output bytes MSB-first
-      for (k = 0; k < WORD_BYTES; k = k + 1) begin
-        push_exp_byte(w[W-1-8*k -: 8]);
-      end
-
-      in_data  = w;
-      in_valid = 1'b1;
-
-      // wait until accepted
-      while (!(in_valid && in_ready)) begin
-        @(posedge clk);
-      end
-
-      // accepted on THIS posedge
-      if (VERBOSE) begin
-        $display("[%0t] TX word accepted #%0d: 0x%0h (bytes MSB->LSB: %02h %02h %02h %02h)",
-                 $time, total_words_sent, w,
-                 w[31:24], w[23:16], w[15:8], w[7:0]);
-      end
-
-      @(posedge clk);
-      in_valid = 1'b0;
-      in_data  = {W{1'b0}};
-      total_words_sent = total_words_sent + 1;
-    end
-  endtask
-
-  // ---- Dump VCD ----
-  initial begin
-    $dumpfile("tb_byte_serializer.vcd");
-    $dumpvars(0, tb_byte_serializer);
-  end
-
-  // Random backpressure on out_ready
-  always @(posedge clk) begin
-    if (!rst_n) out_ready <= 1'b0;
-    else begin
-      // ~70% ready
-      out_ready <= ($random % 10 < 7);
-    end
-  end
-
-  // Check bytes as they are accepted
-  always @(posedge clk) begin
-    if (rst_n && out_valid && out_ready) begin
-      check_got_byte(out_data);
-
-      // Count words received when we complete WORD_BYTES bytes
-      if ((got_bytes_total % WORD_BYTES) == 0) begin
-        total_words_received <= got_bytes_total / WORD_BYTES;
-      end
-    end
-  end
-
-  initial begin
-    in_data   = {W{1'b0}};
-    in_valid  = 1'b0;
-    out_ready = 1'b0;
-
-    // reset
-    repeat (5) @(posedge clk);
-    rst_n = 1'b0;
-    repeat (5) @(posedge clk);
-    rst_n = 1'b1;
-
-    if (VERBOSE) $display("[%0t] Starting test...", $time);
-
-    // known words
-    send_word(32'hDEADBEEF);
-    send_word(32'h01234567);
-
-    // random words
-    for (i = 0; i < 50; i = i + 1) begin
-      send_word($random);
+        $display("");
+        if (errors == 0)
+            $display("PASS: All byte_serializer tests passed (NUM_BYTES=%0d)", NUM_BYTES);
+        else
+            $display("FAIL: %0d error(s) in byte_serializer tests (NUM_BYTES=%0d)",
+                     errors, NUM_BYTES);
+        $display("");
+        $finish;
     end
 
-    // wait for all expected bytes to drain
-    while (got_bytes_total < exp_bytes_total) begin
-      @(posedge clk);
+    // ----------------------------------------------------------------
+    // Optional VCD dump
+    // ----------------------------------------------------------------
+    initial begin
+        if ($test$plusargs("vcd")) begin
+            $dumpfile("tb_byte_serializer.vcd");
+            $dumpvars(0, tb_byte_serializer);
+        end
     end
-
-    $display("PASS: byte_serializer (%0d bytes/word). Words sent: %0d, Words received: %0d, Bytes checked: %0d",
-             WORD_BYTES, total_words_sent, total_words_received, got_bytes_total);
-    $finish;
-  end
 
 endmodule
