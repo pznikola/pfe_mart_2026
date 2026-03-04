@@ -3,18 +3,18 @@
 // Data flow:
 //   PC  →  JTAG UART  →  controller rx (8-bit)
 //                              ↓
-//                       deserializer (collects WORD_BYTES bytes)
+//                       deserializer (collects NUM_BYTES bytes)
 //                              ↓
-//                         pfe (WORD_BYTES*8 bits wide)
+//                         pfe (NUM_BYTES*8 bits wide)
 //                              ↓
 //                        serializer (breaks back into bytes)
 //                              ↓
 //                       controller tx (8-bit)  →  JTAG UART  →  PC
 //
-// Change WORD_BYTES to set the processing width:
+// Change NUM_BYTES to set the processing width:
 //   1 = 8-bit,  2 = 16-bit,  3 = 24-bit,  4 = 32-bit, etc.
 //
-// The PC must send data in multiples of WORD_BYTES.
+// The PC must send data in multiples of NUM_BYTES.
 
 `default_nettype none
 
@@ -26,7 +26,7 @@ module jtag_uart_top (
     // =====================================================
     // Change this parameter to set the word width
     // =====================================================
-    localparam WORD_BYTES = 1;   // 4 bytes = 32 bits
+    localparam NUM_BYTES = 1;   // 4 bytes = 32 bits
     // =====================================================
 
     wire rst_n = RSTN;
@@ -40,31 +40,20 @@ module jtag_uart_top (
     wire [31:0] av_writedata;
     wire        av_waitrequest;
 
-    // Controller RX stream (8-bit bytes from PC)
+    // Controller RX stream (8-bit bytes from PC) and TX stream (8-bit bytes to PC)
     wire [7:0]  ctrl_fifo_data;
     wire        ctrl_fifo_valid;
-    wire        ctrl_fifo_ready;
-    // wire [7:0]  fifo_deser_data;
-    // wire        fifo_deser_valid;
-    // wire        fifo_deser_ready;
-
-    // Controller TX stream (8-bit bytes to PC)
-    // wire [7:0]  ser_fifo_data;
-    // wire        ser_fifo_valid;
-    // wire        ser_fifo_ready;
     wire [7:0]  fifo_ctrl_data;
     wire        fifo_ctrl_valid;
     wire        fifo_ctrl_ready;
 
-    // // Wide word: deserializer -> pfe
-    // wire [WORD_BYTES*8-1:0] deser_data;
-    // wire                    deser_valid;
-    // wire                    deser_ready;
-
-    // // Wide word: pfe -> serializer
-    // wire [WORD_BYTES*8-1:0] pfe_data;
-    // wire                    pfe_valid;
-    // wire                    pfe_ready;
+    // FIFO to PFE and back
+    wire [NUM_BYTES*8-1:0] fifo_pfe_data;
+    wire                   fifo_pfe_valid;
+    wire                   fifo_pfe_ready;
+    wire [NUM_BYTES*8-1:0] pfe_fifo_data;
+    wire                   pfe_fifo_valid;
+    wire                   pfe_fifo_ready;
 
     // Platform Designer system
     jtag_uart_sys u_sys (
@@ -104,74 +93,44 @@ module jtag_uart_top (
       .ASIZE (8)
     ) u_fifo_deser (
       .clk_i        (CLOCK_50),     
-      .rst_ni       (rst_n),    
+      .rst_ni       (rst_n),
+      .in_data_i    (ctrl_fifo_data),    
       .in_valid_i   (ctrl_fifo_valid),
       .in_ready_o   (ctrl_fifo_ready),
-      .in_data_i    (ctrl_fifo_data),
-      .out_valid_o  (fifo_ctrl_valid),
-      .out_ready_i  (fifo_ctrl_ready),
-      .out_data_o   (fifo_ctrl_data)
-      // .out_valid_o  (fifo_deser_valid),
-      // .out_ready_i  (fifo_deser_ready),
-      // .out_data_o   (fifo_deser_data)
+      .out_data_o   (fifo_pfe_data),
+      .out_valid_o  (fifo_pfe_valid),
+      .out_ready_i  (fifo_pfe_ready)
     );
 
-    // // Deserializer: N bytes → wide word
-    // byte_deserializer #(
-    //     .WORD_BYTES (WORD_BYTES)
-    // ) u_deser (
-    //     .clk        (CLOCK_50),
-    //     .rst_n      (rst_n),
-    //     .in_data    (fifo_deser_data),
-    //     .in_valid   (fifo_deser_valid),
-    //     .in_ready   (fifo_deser_ready),
-    //     .out_data   (deser_data),
-    //     .out_valid  (deser_valid),
-    //     .out_ready  (deser_ready)
-    // );
 
-    // // Processing module
-    // pfe #(
-    //     .WORD_BYTES (WORD_BYTES)
-    // ) u_pfe (
-    //     .clk        (CLOCK_50),
-    //     .rst_n      (rst_n),
-    //     .in_data    (deser_data),
-    //     .in_valid   (deser_valid),
-    //     .in_ready   (deser_ready),
-    //     .out_data   (pfe_data),
-    //     .out_valid  (pfe_valid),
-    //     .out_ready  (pfe_ready)
-    // );
+    // Processing module
+    pfe #(
+        .NUM_BYTES (NUM_BYTES)
+    ) u_pfe (
+        .clk        (CLOCK_50),
+        .rst_n      (rst_n),
+        .in_data    (fifo_pfe_data),
+        .in_valid   (fifo_pfe_valid),
+        .in_ready   (fifo_pfe_ready),
+        .out_data   (pfe_fifo_data),
+        .out_valid  (pfe_fifo_valid),
+        .out_ready  (pfe_fifo_ready)
+    );
 
-    // // Serializer: wide word → N bytes
-    // byte_serializer #(
-    //     .WORD_BYTES (WORD_BYTES)
-    // ) u_ser (
-    //     .clk        (CLOCK_50),
-    //     .rst_n      (rst_n),
-    //     .in_data    (pfe_data),
-    //     .in_valid   (pfe_valid),
-    //     .in_ready   (pfe_ready),
-    //     .out_data   (ser_fifo_data),
-    //     .out_valid  (ser_fifo_valid),
-    //     .out_ready  (ser_fifo_ready)
-    // );
-
-    // // FIFO between serializer and ctrl
-    // fifo #(
-    //   .DSIZE (8), 
-    //   .ASIZE (8)
-    // ) u_fifo_ser (
-    //   .clk_i        (CLOCK_50),     
-    //   .rst_ni       (rst_n),    
-    //   .in_valid_i   (ser_fifo_data),
-    //   .in_ready_o   (ser_fifo_ready),
-    //   .in_data_i    (ser_fifo_valid),
-    //   .out_valid_o  (fifo_ctrl_valid),
-    //   .out_ready_i  (fifo_ctrl_ready),
-    //   .out_data_o   (fifo_ctrl_data)
-    // );
+    // FIFO between serializer and ctrl
+    fifo #(
+      .DSIZE (8), 
+      .ASIZE (8)
+    ) u_fifo_ser (
+      .clk_i        (CLOCK_50),     
+      .rst_ni       (rst_n),    
+      .in_data_i    (pfe_fifo_data),
+      .in_valid_i   (pfe_fifo_valid),
+      .in_ready_o   (pfe_fifo_ready),
+      .out_data_o   (fifo_ctrl_data),
+      .out_valid_o  (fifo_ctrl_valid),
+      .out_ready_i  (fifo_ctrl_ready)
+    );
 
 endmodule
 
