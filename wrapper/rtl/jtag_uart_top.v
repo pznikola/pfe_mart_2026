@@ -43,6 +43,7 @@ module jtag_uart_top (
     // Controller RX stream (8-bit bytes from PC) and TX stream (8-bit bytes to PC)
     wire [7:0]  ctrl_fifo_data;
     wire        ctrl_fifo_valid;
+    wire        ctrl_fifo_ready;
     wire [7:0]  fifo_ctrl_data;
     wire        fifo_ctrl_valid;
     wire        fifo_ctrl_ready;
