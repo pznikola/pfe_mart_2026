@@ -1,0 +1,3 @@
+[submodule "exercises/croc_pfe"]
+	path = exercises/croc_pfe
+	url = git@github.com:pznikola/croc.git
