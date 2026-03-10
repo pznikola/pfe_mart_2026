@@ -10,7 +10,7 @@ DOCKER_TAG="2025.12"
 
 # Design directory - change this to your design path
 if [ -z "${DESIGNS}" ]; then
-    DESIGNS="$(pwd)/exercises"
+    DESIGNS="$(pwd)"
 fi
 
 # Create design directory if it doesn't exist
@@ -50,6 +50,9 @@ docker run -it \
     --security-opt seccomp=unconfined \
     --net=host \
     -e DISPLAY="${DISPLAY}" \
+    -e QT_X11_NO_MITSHM=1 \
+    -e XDG_RUNTIME_DIR=/tmp/runtime-user \
+    -e LIBGL_ALWAYS_SOFTWARE=1 \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
     -v "${DESIGNS}":/pfe/work_area:rw \
     -w /pfe/work_area \

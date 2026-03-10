@@ -1,0 +1,3 @@
+[submodule "exercises/asic/ihp13/pdk"]
+	path = exercises/asic/ihp13/pdk
+	url = https://github.com/IHP-GmbH/IHP-Open-PDK.git

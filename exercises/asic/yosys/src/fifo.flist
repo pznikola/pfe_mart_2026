@@ -1,0 +1,12 @@
++define+TARGET_ASIC
++define+TARGET_FLIST
++define+TARGET_IHP13
++define+TARGET_RTL
++define+TARGET_SYNTHESIS
++define+VERILATOR=1
++define+SYNTHESIS=1
++define+COMMON_CELLS_ASSERTS_OFF=1
+../rtl/fifo.sv
+../rtl/pfe.sv
+../rtl/fifo_soc.sv
+../rtl/fifo_chip.sv

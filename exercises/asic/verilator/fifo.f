@@ -1,0 +1,14 @@
++define+TARGET_FLIST
++define+TARGET_RTL
++define+TARGET_SYNTHESIS
++define+TARGET_VERILATOR
++define+VERILATOR=1
++define+TB_VERBOSE=1
++define+COMMON_CELLS_ASSERTS_OFF=1
+../ihp13/pdk/ihp-sg13g2/libs.ref/sg13g2_sram/verilog/RM_IHPSG13_2P_core_behavioral_bm_bist_ideal.v
+../ihp13/pdk/ihp-sg13g2/libs.ref/sg13g2_sram/verilog/RM_IHPSG13_2P_256x8_c2_bm_bist.v
+../rtl/fifo.sv
+../rtl/pfe.sv
+../rtl/fifo_soc.sv
+../rtl/fifo_chip.sv
+../dv/tb_fifo_chip.v

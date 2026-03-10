@@ -1,0 +1,13 @@
++define+TARGET_IHP13
++define+TARGET_NETLIST_YOSYS
++define+TARGET_SYNTHESIS
++define+TARGET_VERILATOR
++define+SYNTHESIS
++define+VERILATOR
++define+FUNCTIONAL
++define+TB_VERBOSE=1
+../ihp13/pdk/ihp-sg13g2/libs.ref/sg13g2_stdcell/verilog/sg13g2_stdcell.v
+../ihp13/pdk/ihp-sg13g2/libs.ref/sg13g2_sram/verilog/RM_IHPSG13_2P_core_behavioral_bm_bist_ideal.v
+../ihp13/pdk/ihp-sg13g2/libs.ref/sg13g2_sram/verilog/RM_IHPSG13_2P_256x8_c2_bm_bist.v
+../yosys/out/fifo_yosys.v
+../dv/tb_fifo_chip.v
