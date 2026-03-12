@@ -1,7 +1,7 @@
 # FIFO chip backend constraints for Yosys/OpenROAD
 # Single-clock top with one external stream input and one external stream output
 
-source src/instances.tcl
+
 
 #############################
 ## Driving Cells and Loads ##
@@ -55,3 +55,4 @@ puts "Outputs..."
 # Output stream observed by external logic.
 set_output_delay -clock clk_sys -min 1.0 [get_ports {in_ready_o out_valid_o out_data_*_o unused*_o}]
 set_output_delay -clock clk_sys -max 3.0 [get_ports {in_ready_o out_valid_o out_data_*_o unused*_o}]
+

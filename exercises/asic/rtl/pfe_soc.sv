@@ -1,4 +1,4 @@
-module fifo_soc #(
+module pfe_soc #(
   parameter int unsigned DSIZE    = 8,
   parameter int unsigned ASIZE    = 8,
   parameter bit          USE_SRAM = 1'b1

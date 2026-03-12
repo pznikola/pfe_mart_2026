@@ -9,14 +9,14 @@
 # A common setup to provide some functionality and define variables
 
 # set global variables
-set sv_flist   "src/fifo.flist"
+set sv_flist   "src/pfe.flist"
 set out_dir    out
 set tmp_dir    tmp
 set rep_dir    reports
 
 # global variables imported from environment variables (if set)
-set proj_name  [expr {[info exists ::env(PROJ_NAME)]  ? $::env(PROJ_NAME)  : "fifo"}]
-set top_design [expr {[info exists ::env(TOP_DESIGN)] ? $::env(TOP_DESIGN) : "fifo_chip"}]
+set proj_name  [expr {[info exists ::env(PROJ_NAME)]  ? $::env(PROJ_NAME)  : "pfe"}]
+set top_design [expr {[info exists ::env(TOP_DESIGN)] ? $::env(TOP_DESIGN) : "pfe_chip"}]
 
 file mkdir $out_dir
 file mkdir $tmp_dir

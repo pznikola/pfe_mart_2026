@@ -42,7 +42,7 @@ Environment Variables:
     PROJ_NAME           Project name (default: ${PROJ_NAME})
 
 Inputs:
-    - RTL file list: src/fifo.flist
+    - RTL file list: src/pfe.flist
     - PDK Liberty files (auto-discovered)
 
 Outputs:

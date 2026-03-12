@@ -8,8 +8,8 @@
 ###############################################################################
 # Setup
 ###############################################################################
-set proj_name  [expr {[info exists ::env(PROJ_NAME)]  ? $::env(PROJ_NAME)  : "croc"}]
-set top_design [expr {[info exists ::env(TOP_DESIGN)] ? $::env(TOP_DESIGN) : "croc_chip"}]
+set proj_name  [expr {[info exists ::env(PROJ_NAME)]  ? $::env(PROJ_NAME)  : "pfe"}]
+set top_design [expr {[info exists ::env(TOP_DESIGN)] ? $::env(TOP_DESIGN) : "pfe_chip"}]
 
 set netlist "../yosys/out/${proj_name}_yosys.v"
 set report_dir reports

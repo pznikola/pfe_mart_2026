@@ -21,7 +21,7 @@ set abc_script [processAbcScript scripts/abc-opt.script]
 source scripts/init_tech.tcl
 
 yosys plugin -i slang.so
-# default from yosys_common.tcl: top_design=fifo_chip; sv_flist=src/fifo.flist
+# default from yosys_common.tcl: top_design=pfe_chip; sv_flist=src/pfe.flist
 yosys read_slang --top $top_design -f $sv_flist \
         --compat-mode --keep-hierarchy \
         --allow-use-before-declare --ignore-unknown-modules
@@ -30,7 +30,9 @@ yosys read_slang --top $top_design -f $sv_flist \
 # 't' means type as in select all instances of this type/module
 # yosys-slang uniquifies all modules with the naming scheme:
 # <module-name>$<instance-name> -> match for t:<module-name>$$
-yosys setattr -set keep_hierarchy 1 "t:fifo_soc$*"
+yosys setattr -set keep_hierarchy 1 "t:pfe_soc$*"
+yosys setattr -set keep_hierarchy 1 "t:accumulator$*"
+yosys setattr -set keep_hierarchy 1 "t:fifo$*"
 yosys setattr -set keep_hierarchy 1 "t:pfe$*"
 
 # blackbox SRAM modules (applies the *blackbox* attribute)

@@ -7,6 +7,8 @@
 +define+SYNTHESIS=1
 +define+COMMON_CELLS_ASSERTS_OFF=1
 ../rtl/fifo.sv
+../rtl/accumulator.sv
+../rtl/byte_serializer.sv
 ../rtl/pfe.sv
-../rtl/fifo_soc.sv
-../rtl/fifo_chip.sv
+../rtl/pfe_soc.sv
+../rtl/pfe_chip.sv

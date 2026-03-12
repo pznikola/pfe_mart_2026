@@ -1,4 +1,4 @@
-module fifo_chip (
+module pfe_chip (
   input  wire clk_i,
   input  wire rst_ni,
 
@@ -107,7 +107,7 @@ module fifo_chip (
     (* dont_touch = "true" *)sg13g2_IOPadIOVss pad_vssio2();
     (* dont_touch = "true" *)sg13g2_IOPadIOVss pad_vssio3();
 
-  fifo_soc #(
+  pfe_soc #(
     .DSIZE    (   8 ),
     .ASIZE    (   8 ),
     .USE_SRAM ( 1'b1 )

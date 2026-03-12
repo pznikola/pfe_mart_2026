@@ -1,4 +1,4 @@
-# fifo_chip-specific SRAM instance discovery
+# pfe_chip-specific SRAM instance discovery
 # Two 256x8 SRAM macros.
 
 set macros [list]

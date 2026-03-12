@@ -45,8 +45,8 @@ Options:
     --open script       Open GUI and execute script (e.g., scripts/startup.tcl)
 
 Environment Variables:
-    PROJ_NAME       - Project name (default: fifo)
-    TOP_DESIGN      - Top module name (default: fifo_chip)
+    PROJ_NAME       - Project name (default: pfe)
+    TOP_DESIGN      - Top module name (default: pfe_chip)
 
 Examples:
     # Run entire backend flow

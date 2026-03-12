@@ -22,9 +22,9 @@ echo "[INFO][ENV] FIFO root: $FIFO_ROOT"
 ######################
 # Project Settings
 ######################
-export PROJ_NAME="${PROJ_NAME:-fifo}"
-export TOP_DESIGN="${TOP_DESIGN:-fifo_chip}"
-export DUT_DESIGN="${DUT_DESIGN:-fifo}"
+export PROJ_NAME="${PROJ_NAME:-pfe}"
+export TOP_DESIGN="${TOP_DESIGN:-pfe_chip}"
+export DUT_DESIGN="${DUT_DESIGN:-pfe}"
 export USE_SRAM="1"
 
 ###################
