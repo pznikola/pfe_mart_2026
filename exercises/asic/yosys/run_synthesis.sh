@@ -81,6 +81,14 @@ run_yosys() {
         gawk -f scripts/filter_output.awk"
 }
 
+run_yosys_logic() {
+    run_cmd "echo [INFO][Yosys] Synthesizing ${TOP_DESIGN}"
+    run_cmd "yosys \
+        -c scripts/yosys_synthesis_logic.tcl 2>&1 | \
+        TZ=UTC gawk '{ print strftime(\"[%Y-%m-%d %H:%M %Z]\"), \$0 }' | \
+        tee ${PROJ_NAME}.log | \
+        gawk -f scripts/filter_output.awk"
+}
 
 open_yosys() {
     run_cmd "echo [INFO][Yosys] Open Yosys"
@@ -121,6 +129,11 @@ while [[ $# -gt 0 ]]; do
         # script-specific commands
         --synth)
             run_yosys
+            shift
+            ;;
+        # script-specific commands
+        --logic)
+            run_yosys_logic
             shift
             ;;
         --open)

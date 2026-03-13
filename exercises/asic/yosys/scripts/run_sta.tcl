@@ -5,19 +5,12 @@
 # Uses the same PDK path structure as yosys/scripts/init_tech.tcl
 
 # ── PDK Path Discovery ────────────────────────────────
-if {[file exists "../technology"]} {
-    puts "Loading technology from ETHZ DZ cockpit"
-    set pdk_dir "../technology"
-    set pdk_cells_lib ${pdk_dir}/lib
-    set pdk_sram_lib  ${pdk_dir}/lib
-    set pdk_io_lib    ${pdk_dir}/lib
-} else {
-    puts "Loading technology from Github PDK"
-    set pdk_dir "../ihp13/pdk"
-    set pdk_cells_lib ${pdk_dir}/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib
-    set pdk_sram_lib  ${pdk_dir}/ihp-sg13g2/libs.ref/sg13g2_sram/lib
-    set pdk_io_lib    ${pdk_dir}/ihp-sg13g2/libs.ref/sg13g2_io/lib
-}
+puts "Loading technology from Github PDK\n"
+set pdk_dir "../ihp13/pdk"
+set pdk_cells_lib ${pdk_dir}/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib
+set pdk_sram_lib  ${pdk_dir}/ihp-sg13g2/libs.ref/sg13g2_sram/lib
+set pdk_io_lib    ${pdk_dir}/ihp-sg13g2/libs.ref/sg13g2_io/lib
+
 
 # ── Read Liberty Files ────────────────────────────────
 # Standard cells (typical corner)
@@ -36,7 +29,7 @@ read_verilog ./out/pfe_yosys.v
 link_design pfe_chip
 
 # ── Read Constraints (SDC) ────────────────────────────
-read_sdc constraints.sdc
+read_sdc ./scripts/constraints.sdc
 
 # ── Reports ───────────────────────────────────────────
 puts "\n══ Worst Hold Path ══"
@@ -52,3 +45,4 @@ puts "\n══ Timing Summary ══"
 report_tns
 report_wns
 
+exit
