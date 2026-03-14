@@ -126,7 +126,7 @@ yosys clean -purge
 
 # -----------------------------------------------------------------------------
 # prep for openROAD
-yosys write_verilog -norename -noexpr -attr2comment ${out_dir}/netlist_debug.v
+yosys write_verilog -norename -noexpr -attr2comment ${out_dir}/netlist_logic_debug.v
 
 yosys splitnets -ports -format __v
 yosys setundef -zero
@@ -140,4 +140,4 @@ yosys tee -q -o "${rep_dir}/${proj_name}_area.rpt" stat -top $top_design {*}$lib
 yosys tee -q -o "${rep_dir}/${proj_name}_area_logic.rpt" stat -top $top_design {*}$tech_cells_args
 
 # final netlist
-yosys write_verilog -noattr -noexpr -nohex -nodec ${out_dir}/${proj_name}_yosys.v
+yosys write_verilog -noattr -noexpr -nohex -nodec ${out_dir}/${proj_name}_logic_yosys.v
