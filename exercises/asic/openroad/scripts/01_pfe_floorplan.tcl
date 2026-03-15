@@ -110,8 +110,8 @@ source scripts/power_grid.tcl
 # Kraj zadatka 8: Napajanje
 ###############################################################################
 # Save checkpoint
-save_checkpoint 01_${proj_name}.floorplan
-report_image "01_${proj_name}.floorplan" true
+save_checkpoint 01_pfe.floorplan
+report_image "01_pfe.floorplan" true
 
 utl::report "###############################################################################"
 utl::report "# Stage 01 complete: Checkpoint saved to ${save_dir}/01_${proj_name}.floorplan.zip"
