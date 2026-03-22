@@ -106,16 +106,16 @@ module jtag_uart_top (
 
     // Processing module
     pfe #(
-        .NUM_BYTES (NUM_BYTES)
+        .DSIZE (8)
     ) u_pfe (
-        .clk        (CLOCK_50),
-        .rst_n      (rst_n),
-        .in_data    (fifo_pfe_data),
-        .in_valid   (fifo_pfe_valid),
-        .in_ready   (fifo_pfe_ready),
-        .out_data   (pfe_fifo_data),
-        .out_valid  (pfe_fifo_valid),
-        .out_ready  (pfe_fifo_ready)
+        .clk_i        (CLOCK_50),
+        .rst_ni       (rst_n),
+        .in_data_i    (fifo_pfe_data),
+        .in_valid_i   (fifo_pfe_valid),
+        .in_ready_o   (fifo_pfe_ready),
+        .out_data_o   (pfe_fifo_data),
+        .out_valid_o  (pfe_fifo_valid),
+        .out_ready_i  (pfe_fifo_ready)
     );
 
     // FIFO between serializer and ctrl

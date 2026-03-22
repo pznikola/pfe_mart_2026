@@ -45,15 +45,19 @@ BUILD_DIR = build
 
 
 RTL_FIFO      = $(RTL_DIR)/fifo.v 
-RTL_DESER     = $(RTL_DIR)/byte_deserializer.v 
-RTL_SER       = $(RTL_DIR)/byte_serializer.v
+RTL_DESER     = $(RTL_DIR)/byte_deserializer.sv 
+RTL_SER       = $(RTL_DIR)/byte_serializer.sv
 RTL_JTAG_CTRL = $(RTL_DIR)/jtag_uart_controller.v
+RTL_ACC       = $(RTL_DIR)/accumulator.sv
+RTL_PFE       = $(RTL_DIR)/pfe.sv
 
 TB_FIFO       = $(DV_DIR)/tb_fifo.v
 TB_DESER      = $(DV_DIR)/tb_byte_deserializer.v
 TB_SER        = $(DV_DIR)/tb_byte_serializer.v
 TB_JTAG       = $(DV_DIR)/tb_jtag_uart_controller.v
 MODEL_JTAG    = $(DV_DIR)/jtag_uart_model.v
+TB_ACC        = $(DV_DIR)/tb_accumulator.sv
+TB_PFE        = $(DV_DIR)/tb_pfe.sv
 
 # Simulate fifo
 sim_fifo:
@@ -99,12 +103,36 @@ sim_jtag:
 	@echo "== Running tb_jtag_uart_controller =="
 	./$(BUILD_DIR)/jtag/Vtb_jtag_uart_controller
 
+# Simulate accumulator
+sim_acc:
+	@mkdir -p $(BUILD_DIR)/acc
+	@echo "== Building tb_accumulator =="
+	$(VERILATOR) $(VERILATOR_FLAGS) \
+		--top-module tb_accumulator \
+		-Mdir $(BUILD_DIR)/acc \
+		$(RTL_ACC) $(TB_ACC)
+	@echo "== Running tb_accumulator =="
+	./$(BUILD_DIR)/acc/Vtb_accumulator
+
+# Simulate pfe
+sim_pfe:
+	@mkdir -p $(BUILD_DIR)/pfe
+	@echo "== Building tb_pfe =="
+	$(VERILATOR) $(VERILATOR_FLAGS) \
+		--top-module tb_pfe \
+		-Mdir $(BUILD_DIR)/pfe \
+		$(RTL_PFE) $(RTL_ACC) $(RTL_SER) $(TB_PFE)
+	@echo "== Running tb_pfe =="
+	./$(BUILD_DIR)/pfe/Vtb_pfe
+
 # Simulate all
 sim_all:
 	make sim_fifo
 	make sim_deser
 	make sim_ser
 	make sim_jtag
+	make sim_acc
+	make sim_pfe
 
 #----------------------------------------------------------------------
 # Clean
