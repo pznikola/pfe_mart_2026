@@ -1,21 +1,3 @@
-// jtag_uart_top.v
-//
-// Data flow:
-//   PC  →  JTAG UART  →  controller rx (8-bit)
-//                              ↓
-//                       deserializer (collects NUM_BYTES bytes)
-//                              ↓
-//                         pfe (NUM_BYTES*8 bits wide)
-//                              ↓
-//                        serializer (breaks back into bytes)
-//                              ↓
-//                       controller tx (8-bit)  →  JTAG UART  →  PC
-//
-// Change NUM_BYTES to set the processing width:
-//   1 = 8-bit,  2 = 16-bit,  3 = 24-bit,  4 = 32-bit, etc.
-//
-// The PC must send data in multiples of NUM_BYTES.
-
 `default_nettype none
 
 module jtag_uart_top (
@@ -26,7 +8,7 @@ module jtag_uart_top (
     // =====================================================
     // Change this parameter to set the word width
     // =====================================================
-    localparam NUM_BYTES = 1;   // 4 bytes = 32 bits
+    localparam NUM_BYTES = 4;   // 4 bytes = 32 bits
     // =====================================================
 
     wire rst_n = RSTN;
@@ -48,13 +30,21 @@ module jtag_uart_top (
     wire        fifo_ctrl_valid;
     wire        fifo_ctrl_ready;
 
-    // FIFO to PFE and back
-    wire [NUM_BYTES*8-1:0] fifo_pfe_data;
-    wire                   fifo_pfe_valid;
-    wire                   fifo_pfe_ready;
-    wire [NUM_BYTES*8-1:0] pfe_fifo_data;
-    wire                   pfe_fifo_valid;
-    wire                   pfe_fifo_ready;
+    // FIFO to SER/DESER and back
+    wire [7:0] fifo_deser_data;
+    wire       fifo_deser_valid;
+    wire       fifo_deser_ready;
+    wire [7:0] ser_fifo_data;
+    wire       ser_fifo_valid;
+    wire       ser_fifo_ready;
+
+    // SER/DESER to PFE
+    wire [NUM_BYTES*8-1:0] deser_pfe_data;
+    wire                   deser_pfe_valid;
+    wire                   deser_pfe_ready;
+    wire [NUM_BYTES*8-1:0] pfe_ser_data;
+    wire                   pfe_ser_valid;
+    wire                   pfe_ser_ready;
 
     // Platform Designer system
     jtag_uart_sys u_sys (
@@ -98,36 +88,61 @@ module jtag_uart_top (
       .in_data_i    (ctrl_fifo_data),    
       .in_valid_i   (ctrl_fifo_valid),
       .in_ready_o   (ctrl_fifo_ready),
-      .out_data_o   (fifo_pfe_data),
-      .out_valid_o  (fifo_pfe_valid),
-      .out_ready_i  (fifo_pfe_ready)
+      .out_data_o   (fifo_deser_data),
+      .out_valid_o  (fifo_deser_valid),
+      .out_ready_i  (fifo_deser_ready)
+    );
+
+    byte_deserializer #(
+        .NUM_BYTES (NUM_BYTES)
+    ) u_deserializer (
+        .clk      (CLOCK_50),
+        .rst_n    (rst_n),
+        .in_data  (fifo_deser_data),
+        .in_valid (fifo_deser_valid),
+        .in_ready (fifo_deser_ready),
+        .out_data (deser_pfe_data),
+        .out_valid(deser_pfe_valid),
+        .out_ready(deser_pfe_ready)
     );
 
 
-    // Processing module
+    // PFE module
     pfe #(
-        .DSIZE (8)
+        .DSIZE (4*8)
     ) u_pfe (
         .clk_i        (CLOCK_50),
         .rst_ni       (rst_n),
-        .in_data_i    (fifo_pfe_data),
-        .in_valid_i   (fifo_pfe_valid),
-        .in_ready_o   (fifo_pfe_ready),
-        .out_data_o   (pfe_fifo_data),
-        .out_valid_o  (pfe_fifo_valid),
-        .out_ready_i  (pfe_fifo_ready)
+        .in_data_i    (deser_pfe_data),
+        .in_valid_i   (deser_pfe_valid),
+        .in_ready_o   (deser_pfe_ready),
+        .out_data_o   (pfe_ser_data),
+        .out_valid_o  (pfe_ser_valid),
+        .out_ready_i  (pfe_ser_ready)
     );
 
-    // FIFO between serializer and ctrl
+    byte_serializer #(
+        .NUM_BYTES (NUM_BYTES)
+    ) u_serializer (
+        .clk      (CLOCK_50),
+        .rst_n    (rst_n),
+        .in_data  (pfe_ser_data),
+        .in_valid (pfe_ser_valid),
+        .in_ready (pfe_ser_ready),
+        .out_data (ser_fifo_data),
+        .out_valid(ser_fifo_valid),
+        .out_ready(ser_fifo_ready)
+    );
+
     fifo #(
       .DSIZE (8), 
       .ASIZE (8)
     ) u_fifo_ser (
       .clk_i        (CLOCK_50),     
       .rst_ni       (rst_n),    
-      .in_data_i    (pfe_fifo_data),
-      .in_valid_i   (pfe_fifo_valid),
-      .in_ready_o   (pfe_fifo_ready),
+      .in_data_i    (ser_fifo_data),
+      .in_valid_i   (ser_fifo_valid),
+      .in_ready_o   (ser_fifo_ready),
       .out_data_o   (fifo_ctrl_data),
       .out_valid_o  (fifo_ctrl_valid),
       .out_ready_i  (fifo_ctrl_ready)
