@@ -81,5 +81,16 @@ set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to HEX0[0]
 # ... HEX0[1] do HEX0[6], zatim HEX1–HEX5 ...
 ```
 
-# Lokacije pinova
+#### Lokacije pinova
 Mozete pogledati zvanicnu dokumentaciju **DE1-SoC_User_Manual.pdf** ili **pin_assignment_DE1_SoC.tcl**.
+
+### Korak 3
+```bash
+make q_build
+make q_program_only
+```
+
+### Korak 4
+Profit?
+
+<img src="images/rtl.png" alt="description" width="300">
