@@ -11,7 +11,7 @@ This project implements a JTAG UART communication pipeline on the DE1-SoC (Cyclo
 | `rtl/jtag_uart_top.v` | **Top-level module** — instantiates all submodules and defines all board-level I/O ports |
 | `rtl/jtag_uart_controller.v` | FSM that drives the Avalon-MM bus to read/write the JTAG UART IP |
 | `rtl/fifo.v` | Generic synchronous FIFO with valid/ready handshaking |
-| `rtl/pfe.sv` | Processing front-end -- wraps the byte deserializer and a byte serializer |
+| `rtl/pfe.sv` | PFE -- passthrough, edit this file |
 | `rtl/byte_deserializer.sv` | Collects individual bytes into a wider word |
 | `rtl/byte_serializer.sv` | Breaks a wide word back into individual bytes |
 | `setup_project.tcl` | Quartus project setup script -- **contains all pin assignments** |
@@ -172,7 +172,8 @@ Individual module testbenches can be run with Verilator. Testbench sources live 
 | `make sim_ser` | `byte_serializer.sv` |
 | `make sim_jtag` | `jtag_uart_controller.v` (with `jtag_uart_model.v`) |
 | `make sim_acc` | `accumulator.sv` |
-| `make sim_pfe` | `pfe.sv` (includes accumulator + serializer) |
 | `make sim_all` | Run **all** of the above in sequence |
 
 Set `VERBOSE=0` for quieter output: `make sim_fifo VERBOSE=0`
+
+# There is a simpler solution for your troubles in the `simulacija_primer` folder!!!
