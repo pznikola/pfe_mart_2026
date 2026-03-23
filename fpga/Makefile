@@ -28,7 +28,7 @@ connect:
 	python3 jtag_uart_raw.py
 
 connect_image:
-	python3 jtag_uart_image.py --input images/pfe.png --output images/pfe_received.png --timeout 60
+	python3 jtag_uart_image.py --input images/logo.png --output images/logo_received.png --timeout 60
 
 connect_conv:
 	python3 jtag_uart_image.py --input images/pfe.png --output images/pfe_received.png --timeout 60 --kernel-size 3

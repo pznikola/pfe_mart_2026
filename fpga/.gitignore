@@ -9,4 +9,4 @@ jtag_uart_sys/
 db/
 incremental_db/
 build/
-images/pfe_received.png
+images/*_received.png
