@@ -9,23 +9,23 @@ module pfe_tb;
     parameter int CLK_PERIOD = 10; // ns
 
     // ──────────────────────────────────────────────
-    // Test stimulus - edit these arrays to change
-    // what gets sent and what is expected
+    // Test stimulus - edit these to change the test
+    //
+    // input_a[i] + input_b[i] should produce
+    // expected_c[i] one clock cycle later.
     // ──────────────────────────────────────────────
-    logic [DSIZE-1:0] input_data []    = '{8'hA0, 8'hB1, 8'hC2, 8'hD3, 8'hE4, 8'h01, 8'h02, 8'h03};
-    logic [DSIZE-1:0] expected_data [] = '{8'hA0, 8'hB1, 8'hC2, 8'hD3, 8'hE4, 8'h01, 8'h02, 8'h03};
+    logic [DSIZE-1:0] input_a []    = '{8'h01, 8'h10, 8'hFF, 8'h80, 8'h00};
+    logic [DSIZE-1:0] input_b []    = '{8'h02, 8'h20, 8'h01, 8'h7F, 8'h00};
+    logic [DSIZE-1:0] expected_c [] = '{8'h03, 8'h30, 8'h00, 8'hFF, 8'h00};
 
     // ──────────────────────────────────────────────
     // DUT signals
     // ──────────────────────────────────────────────
     logic             clk;
     logic             rst_n;
-    logic [DSIZE-1:0] in_data;
-    logic             in_valid;
-    logic             in_ready;
-    logic [DSIZE-1:0] out_data;
-    logic             out_valid;
-    logic             out_ready;
+    logic [DSIZE-1:0] a;
+    logic [DSIZE-1:0] b;
+    logic [DSIZE-1:0] c;
 
     // ──────────────────────────────────────────────
     // DUT instantiation
@@ -33,14 +33,11 @@ module pfe_tb;
     pfe #(
         .DSIZE(DSIZE)
     ) dut (
-        .clk_i       (clk),
-        .rst_ni      (rst_n),
-        .in_data_i   (in_data),
-        .in_valid_i  (in_valid),
-        .in_ready_o  (in_ready),
-        .out_data_o  (out_data),
-        .out_valid_o (out_valid),
-        .out_ready_i (out_ready)
+        .clk_i  (clk),
+        .rst_ni (rst_n),
+        .a_i    (a),
+        .b_i    (b),
+        .c_o    (c)
     );
 
     // ──────────────────────────────────────────────
@@ -53,75 +50,63 @@ module pfe_tb;
     // Reset
     // ──────────────────────────────────────────────
     task automatic do_reset();
-        rst_n     <= 1'b0;
-        in_data   <= '0;
-        in_valid  <= 1'b0;
-        out_ready <= 1'b0;
+        rst_n <= 1'b0;
+        a     <= '0;
+        b     <= '0;
         repeat (5) @(posedge clk);
         rst_n <= 1'b1;
         @(posedge clk);
     endtask
 
     // ──────────────────────────────────────────────
-    // Sender process
+    // Sender process - drives a_i and b_i
+    //
+    // Drives one pair per clock cycle, then sets
+    // inputs back to zero.
     // ──────────────────────────────────────────────
     int send_count = 0;
 
     task automatic sender();
-        $display("[SENDER  ] Starting - %0d words to send", input_data.size());
-
-        for (int i = 0; i < input_data.size(); i++) begin
-            // Drive data + valid (will appear at next posedge)
-            in_data  <= input_data[i];
-            in_valid <= 1'b1;
-            // Now wait for handshake: sample at each posedge
-            forever begin
-                @(posedge clk);
-                if (in_valid && in_ready) begin
-                    $display("[SENDER  ] [%0t] Sent word [%0d] = 0x%0h", $time, i, input_data[i]);
-                    send_count++;
-                    break;
-                end
-            end
+        $display("[SENDER  ] Starting - %0d pairs to send", input_a.size());
+        for (int i = 0; i < input_a.size(); i++) begin
+            a <= input_a[i];
+            b <= input_b[i];
+            @(posedge clk);
+            $display("[SENDER  ] [%0t] Sent pair [%0d]: a=0x%0h, b=0x%0h", $time, i, input_a[i], input_b[i]);
+            send_count++;
         end
-        // De-assert after last transfer
-        in_valid <= 1'b0;
-        in_data  <= '0;
-        $display("[SENDER  ] Done - %0d words sent", send_count);
+        a <= '0;
+        b <= '0;
+        $display("[SENDER  ] Done - %0d pairs sent", send_count);
     endtask
 
     // ──────────────────────────────────────────────
-    // Receiver process
+    // Receiver process - checks c_o
     //
-    // Same handshake logic on the output side:
-    // assert ready, then check valid on each posedge.
+    // Output is registered, so c_o appears one cycle
+    // after inputs are driven. The receiver waits one
+    // cycle to account for this pipeline latency,
+    // then samples c_o once per cycle.
     // ──────────────────────────────────────────────
     int recv_count  = 0;
     int error_count = 0;
 
     task automatic receiver();
-        $display("[RECEIVER] Starting - expecting %0d words", expected_data.size());
-
-        out_ready <= 1'b1;
-
-        for (int i = 0; i < expected_data.size(); i++) begin
-            forever begin
-                @(posedge clk);
-                if (out_valid && out_ready) begin
-                    recv_count++;
-                    if (out_data !== expected_data[i]) begin
-                        $error("[RECEIVER] [%0t] MISMATCH word [%0d]: got 0x%0h, expected 0x%0h",
-                               $time, i, out_data, expected_data[i]);
-                        error_count++;
-                    end else begin
-                        $display("[RECEIVER] [%0t] OK word [%0d] = 0x%0h", $time, i, out_data);
-                    end
-                    break;
-                end
+        $display("[RECEIVER] Starting - expecting %0d results", expected_c.size());
+        // Wait one cycle for pipeline latency
+        @(posedge clk);
+        for (int i = 0; i < expected_c.size(); i++) begin
+            @(posedge clk);
+            recv_count++;
+            if (c !== expected_c[i]) begin
+                $error("[RECEIVER] [%0t] MISMATCH result [%0d]: got 0x%0h, expected 0x%0h",
+                       $time, i, c, expected_c[i]);
+                error_count++;
+            end else begin
+                $display("[RECEIVER] [%0t] OK result [%0d] = 0x%0h", $time, i, c);
             end
         end
-        out_ready <= 1'b0;
-        $display("[RECEIVER] Done - %0d words received, %0d errors", recv_count, error_count);
+        $display("[RECEIVER] Done - %0d results checked, %0d errors", recv_count, error_count);
     endtask
 
     // ──────────────────────────────────────────────
@@ -138,18 +123,17 @@ module pfe_tb;
 
         do_reset();
 
-        // Fork means that this should work in parallel
         fork
             sender();
             receiver();
         join
 
-        repeat (5) @(posedge clk);
+        repeat (2) @(posedge clk);
         $display("========================================");
         if (error_count == 0)
-            $display(" TEST PASSED (%0d words)", recv_count);
+            $display(" TEST PASSED (%0d results)", recv_count);
         else
-            $display(" TEST FAILED (%0d errors out of %0d words)", error_count, recv_count);
+            $display(" TEST FAILED (%0d errors out of %0d results)", error_count, recv_count);
         $display("========================================");
         $finish;
     end
