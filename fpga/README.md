@@ -82,4 +82,4 @@ set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to HEX0[0]
 ```
 
 # Lokacije pinova
-Mozete pogledati zvanicnu dokumentaciju *DE1-SoC_User_Manual.pdf* ili nezvanicnu *pin_assignment_DE1_SoC.tcl*.
+Mozete pogledati zvanicnu dokumentaciju **DE1-SoC_User_Manual.pdf** ili **pin_assignment_DE1_SoC.tcl**.
