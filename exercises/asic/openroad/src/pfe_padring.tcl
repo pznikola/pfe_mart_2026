@@ -1,4 +1,6 @@
+# TODO: Potrebno nam je 10 pad-ova po stranici, ukoliko vam je potrebno manje ili vise, promenite ovaj broj
 set numPadsPerEdge 10
+
 # corner width is equal to padD, bondpad outside
 set cornerToPad [expr {$padBond + $padD}]
 

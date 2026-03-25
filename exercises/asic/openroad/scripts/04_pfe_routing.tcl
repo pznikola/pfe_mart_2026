@@ -3,10 +3,8 @@
 ###############################################################################
 source scripts/startup.tcl
 
-# Load checkpoint from previous stage
 load_checkpoint 03_pfe.cts
 
-# Set layers used for estimate_parasitics
 set_wire_rc -clock -layer Metal3
 set_wire_rc -signal -layer Metal3
 
@@ -17,9 +15,6 @@ set_dont_use $dont_use_pads
 ###############################################################################
 # Zadatak 10: Globalno rutiranje
 ###############################################################################
-
-# Reduce TM1 to avoid too much routing there (bigger tracks -> bad for routing)
-
 set_routing_layers -signal Metal2-TopMetal1 -clock Metal2-TopMetal1
 
 set_global_routing_layer_adjustment TopMetal1 0.20
@@ -45,14 +40,13 @@ repair_timing -hold -hold_margin 0.1 -verbose -repair_tns 100
 
 detailed_placement
 
-# Route only the modified net by DPL
 global_route -end_incremental \
             -guide_file ${report_dir}/04_pfe_route.guide \
             -congestion_report_file ${report_dir}/04_pfe_route_congestion.rpt \
             -allow_congestion \
             -verbose
 
-repair_antennas  -iterations 5
+repair_antennas -iterations 5
 
 estimate_parasitics -global_routing
 report_metrics "04-01_pfe.grt_repaired"
